@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>飲食店 在庫管理</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Restaurant Inventory</p>
+        <h1>飲食店 在庫管理</h1>
+      </div>
+      <div class="top-actions">
+        <div class="auth-panel" id="authPanel">
+          <input id="loginEmail" type="email" autocomplete="email" placeholder="メール">
+          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="パスワード">
+          <button class="ghost-button" id="loginButton" type="button">ログイン</button>
+          <button class="ghost-button" id="logoutButton" type="button" hidden>ログアウト</button>
+          <span id="authStatus">未接続</span>
+        </div>
+        <button class="icon-button" id="refreshData" title="最新データを取得" aria-label="最新データを取得">
+          <span aria-hidden="true">↻</span>
+        </button>
+        <button class="icon-button" id="exportCsv" title="CSV出力" aria-label="CSV出力">
+          <span aria-hidden="true">↓</span>
+        </button>
+        <label class="icon-button file-button" title="CSV取込" aria-label="CSV取込">
+          <span aria-hidden="true">↑</span>
+          <input id="importCsv" type="file" accept=".csv,text/csv">
+        </label>
+        <button class="primary-button" id="openForm">食材・資材を追加</button>
+      </div>
+    </header>
+
+    <section class="summary-grid" aria-label="在庫サマリー">
+      <article class="metric">
+          <span>登録品目</span>
+        <strong id="totalItems">0</strong>
+      </article>
+      <article class="metric">
+          <span>総在庫量</span>
+        <strong id="totalStock">0</strong>
+      </article>
+      <article class="metric warn">
+        <span>低在庫</span>
+        <strong id="lowStock">0</strong>
+      </article>
+      <article class="metric">
+        <span>在庫金額</span>
+        <strong id="inventoryValue">¥0</strong>
+      </article>
+    </section>
+
+    <section class="workspace">
+      <aside class="side-panel">
+        <div class="panel-header">
+          <h2>絞り込み</h2>
+          <button class="ghost-button" id="clearFilters">解除</button>
+        </div>
+        <label>
+          検索
+          <input id="searchInput" type="search" placeholder="商品名・業者・保管場所">
+        </label>
+        <label>
+          カテゴリ
+          <select id="categoryFilter">
+            <option value="">すべて</option>
+          </select>
+        </label>
+        <label>
+          業者
+          <select id="supplierFilter">
+            <option value="">すべて</option>
+          </select>
+        </label>
+        <label>
+          表示
+          <select id="statusFilter">
+            <option value="all">すべて</option>
+            <option value="low">低在庫のみ</option>
+            <option value="out">在庫切れのみ</option>
+          </select>
+        </label>
+      </aside>
+
+      <section class="inventory-area">
+        <div class="inventory-toolbar">
+          <div>
+          <h2>店舗在庫一覧</h2>
+            <p id="resultCount">0件を表示中</p>
+          </div>
+          <select id="sortSelect" aria-label="並び替え">
+            <option value="name">商品名順</option>
+            <option value="stockAsc">在庫が少ない順</option>
+            <option value="stockDesc">在庫が多い順</option>
+            <option value="valueDesc">在庫金額が高い順</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>商品名</th>
+                <th>分類</th>
+                <th>業者</th>
+                <th>在庫量</th>
+                <th>適正在庫</th>
+                <th>発注点</th>
+                <th>単価</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="inventoryTable"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="emptyState" hidden>
+          <h3>登録品目がありません</h3>
+          <p>右上の「食材・資材を追加」から最初の品目を登録してください。</p>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="itemDialog">
+    <form method="dialog" class="item-form" id="itemForm">
+      <div class="modal-header">
+        <h2 id="formTitle">食材・資材を追加</h2>
+        <button class="icon-button" value="cancel" title="閉じる" aria-label="閉じる">×</button>
+      </div>
+      <input type="hidden" id="itemId">
+      <div class="form-grid">
+        <label>
+          個別商品名
+          <input id="name" required maxlength="80" placeholder="例: トマト、牛肩ロース、割り箸">
+        </label>
+        <label>
+          管理番号
+          <input id="sku" required maxlength="40" placeholder="例: VEG-TOMATO">
+        </label>
+        <label>
+          カテゴリ
+          <select id="category" required>
+            <option value="野菜">野菜</option>
+            <option value="果物">果物</option>
+            <option value="肉類">肉類</option>
+            <option value="魚類">魚類</option>
+            <option value="冷凍物">冷凍物</option>
+            <option value="乾物">乾物</option>
+            <option value="資材">資材</option>
+          </select>
+        </label>
+        <label>
+          業者名
+          <input id="supplier" maxlength="60" placeholder="野菜は業者別管理に使用">
+        </label>
+        <label>
+          保管場所
+          <input id="location" maxlength="60" placeholder="例: 冷蔵庫A、冷凍庫、乾物棚">
+        </label>
+        <label>
+          単位
+          <input id="unit" list="unitOptions" required maxlength="20" placeholder="例: 個、玉、pac">
+          <datalist id="unitOptions">
+            <option value="個"></option>
+            <option value="玉"></option>
+            <option value="本"></option>
+            <option value="pac"></option>
+            <option value="g"></option>
+            <option value="kg"></option>
+          </datalist>
+        </label>
+        <label>
+          現在庫
+          <input id="stock" type="number" min="0" step="0.01" required>
+        </label>
+        <label>
+          適正在庫 平日
+          <input id="idealWeekdayStock" type="number" min="0" step="0.01" required>
+        </label>
+        <label>
+          適正在庫 土日
+          <input id="idealWeekendStock" type="number" min="0" step="0.01" required>
+        </label>
+        <label>
+          発注点
+          <input id="reorderPoint" type="number" min="0" step="0.01" required>
+        </label>
+        <label>
+          単価
+          <input id="unitPrice" type="number" min="0" step="1" required placeholder="1単位あたり">
+        </label>
+        <label>
+          メモ
+          <input id="note" maxlength="120">
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-button" value="cancel" type="button" id="cancelForm">キャンセル</button>
+        <button class="primary-button" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="movementDialog">
+    <form method="dialog" class="item-form" id="movementForm">
+      <div class="modal-header">
+        <h2 id="movementTitle">在庫を更新</h2>
+        <button class="icon-button" value="cancel" title="閉じる" aria-label="閉じる">×</button>
+      </div>
+      <input type="hidden" id="movementItemId">
+      <input type="hidden" id="movementType">
+      <div class="movement-target" id="movementTarget"></div>
+      <div class="form-grid single">
+        <label>
+          数量
+          <input id="movementQuantity" type="number" min="0.01" step="0.01" required>
+        </label>
+        <label>
+          内容
+          <input id="movementMemo" maxlength="80" placeholder="例: 田中青果から仕入れ、ランチで使用">
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-button" value="cancel" type="button" id="cancelMovement">キャンセル</button>
+        <button class="primary-button" type="submit">反映</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
