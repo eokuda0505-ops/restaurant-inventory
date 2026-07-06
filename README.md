@@ -67,3 +67,4 @@ GitHubでの流れ:
 
 GitHub Pagesだけでは在庫データを保存できません。
 必ずSupabaseのURLとanon keyを `supabase-config.js` に設定してください。
+更新
