@@ -200,8 +200,14 @@ function normalizeItem(item) {
     idealWeekendStock: Number(item.idealWeekendStock) || 0,
     reorderPoint: Number(item.reorderPoint) || 0,
     unitPrice: Number(item.unitPrice) || 0,
-    note: item.note ?? ""
+    note: cleanNote(item.note)
   };
+}
+
+function cleanNote(note) {
+  return String(note ?? "")
+    .replace(/\s*\/?\s*シート[:：].*$/u, "")
+    .trim();
 }
 
 function normalizeUnit(unit) {
@@ -225,7 +231,12 @@ function normalizeUnit(unit) {
     "ｍｌ": "ml",
     ML: "ml",
     cs: "ケース",
-    CS: "ケース"
+    CS: "ケース",
+    can: "缶",
+    CAN: "缶",
+    "カン": "缶",
+    case: "ケース",
+    CASE: "ケース"
   };
 
   return unitMap[cleaned] ?? cleaned;
