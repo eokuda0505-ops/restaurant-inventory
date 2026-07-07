@@ -424,7 +424,9 @@ function renderTable(visibleItems) {
     row.innerHTML = `
       <td>
         <div class="product-main">
-          <strong>${escapeHtml(item.name)}</strong>
+          <button class="product-name-button" data-action="edit" data-id="${item.id}" type="button" title="商品を編集">
+            ${escapeHtml(item.name)}
+          </button>
           <span class="sku">${escapeHtml(item.sku)} / ${escapeHtml(item.location || "未設定")}</span>
           ${item.note ? `<span class="note">${escapeHtml(item.note)}</span>` : ""}
         </div>
