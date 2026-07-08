@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>飲食店 在庫管理</title>
+  <title>THE PORT 在庫管理</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="app-shell">
     <header class="topbar">
       <div>
-        <p class="eyebrow">Restaurant Inventory</p>
-        <h1>飲食店 在庫管理</h1>
+        <p class="eyebrow">THE PORT Inventory</p>
+        <h1>THE PORT 在庫管理</h1>
       </div>
       <div class="top-actions">
         <div class="auth-panel" id="authPanel">
@@ -76,6 +76,10 @@
             <option value="">すべて</option>
           </select>
         </label>
+        <div class="supplier-actions">
+          <button class="ghost-button" id="addSupplier" type="button">業者追加</button>
+          <button class="ghost-button danger" id="deleteSupplier" type="button">業者削除</button>
+        </div>
         <label>
           表示
           <select id="statusFilter">
@@ -155,7 +159,8 @@
         </label>
         <label>
           業者名
-          <input id="supplier" maxlength="60" placeholder="野菜は業者別管理に使用">
+          <input id="supplier" list="supplierOptions" maxlength="60" placeholder="野菜は業者別管理に使用">
+          <datalist id="supplierOptions"></datalist>
         </label>
         <label>
           保管場所

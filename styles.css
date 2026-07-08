@@ -125,6 +125,10 @@ h2 {
   color: var(--muted);
 }
 
+.ghost-button.danger {
+  color: #a33b18;
+}
+
 .icon-button {
   display: inline-grid;
   place-items: center;
@@ -241,6 +245,17 @@ select:focus,
 button:focus-visible {
   outline: 3px solid rgba(25, 117, 107, 0.2);
   outline-offset: 2px;
+}
+
+.supplier-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.supplier-actions .ghost-button {
+  min-height: 38px;
+  padding: 0 8px;
 }
 
 .inventory-area {

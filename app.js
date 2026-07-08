@@ -1,5 +1,6 @@
 const STORAGE_KEY = "restaurant-inventory-items-v3";
 const HISTORY_KEY = "restaurant-inventory-history-v3";
+const SUPPLIER_KEY = "restaurant-inventory-suppliers-v1";
 
 const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ"];
 
@@ -31,9 +32,12 @@ const els = {
   searchInput: document.querySelector("#searchInput"),
   categoryFilter: document.querySelector("#categoryFilter"),
   supplierFilter: document.querySelector("#supplierFilter"),
+  supplierOptions: document.querySelector("#supplierOptions"),
   statusFilter: document.querySelector("#statusFilter"),
   sortSelect: document.querySelector("#sortSelect"),
   clearFilters: document.querySelector("#clearFilters"),
+  addSupplier: document.querySelector("#addSupplier"),
+  deleteSupplier: document.querySelector("#deleteSupplier"),
   openForm: document.querySelector("#openForm"),
   dialog: document.querySelector("#itemDialog"),
   form: document.querySelector("#itemForm"),
@@ -366,17 +370,68 @@ function renderCategoryFilter() {
 
 function renderSupplierFilter() {
   const current = els.supplierFilter.value;
-  const suppliers = [...new Set(items.map((item) => item.supplier).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+  const suppliers = getSupplierOptions();
   els.supplierFilter.innerHTML = '<option value="">すべて</option>';
+  els.supplierOptions.innerHTML = "";
 
   suppliers.forEach((supplier) => {
     const option = document.createElement("option");
     option.value = supplier;
     option.textContent = supplier;
     els.supplierFilter.append(option);
+
+    const datalistOption = document.createElement("option");
+    datalistOption.value = supplier;
+    els.supplierOptions.append(datalistOption);
   });
 
   els.supplierFilter.value = suppliers.includes(current) ? current : "";
+}
+
+function getSupplierOptions() {
+  const saved = loadSavedSuppliers();
+  return [...new Set([...items.map((item) => item.supplier).filter(Boolean), ...saved])]
+    .sort((a, b) => a.localeCompare(b, "ja"));
+}
+
+function loadSavedSuppliers() {
+  try {
+    return JSON.parse(localStorage.getItem(SUPPLIER_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveSupplierOptions(suppliers) {
+  localStorage.setItem(SUPPLIER_KEY, JSON.stringify([...new Set(suppliers.filter(Boolean))]));
+}
+
+function addSupplier() {
+  const supplier = window.prompt("追加する業者名を入力してください。")?.trim();
+  if (!supplier) return;
+
+  saveSupplierOptions([...loadSavedSuppliers(), supplier]);
+  render();
+  els.supplierFilter.value = supplier;
+  renderTable(getVisibleItems());
+}
+
+function deleteSupplier() {
+  const current = els.supplierFilter.value;
+  const supplier = (current || window.prompt("削除する業者名を入力してください。"))?.trim();
+  if (!supplier) return;
+
+  const affectedCount = items.filter((item) => item.supplier === supplier).length;
+  const message = affectedCount > 0
+    ? `${supplier} が設定されている商品 ${affectedCount}件の業者名を未設定にします。よろしいですか？`
+    : `${supplier} を業者候補から削除します。よろしいですか？`;
+  if (!window.confirm(message)) return;
+
+  items = items.map((item) => (item.supplier === supplier ? { ...item, supplier: "" } : item));
+  saveSupplierOptions(loadSavedSuppliers().filter((entry) => entry !== supplier));
+  els.supplierFilter.value = "";
+  saveItems();
+  render();
 }
 
 function getVisibleItems() {
@@ -692,6 +747,8 @@ els.cancelForm.addEventListener("click", closeForm);
 els.form.addEventListener("submit", handleFormSubmit);
 els.cancelMovement.addEventListener("click", closeMovementForm);
 els.movementForm.addEventListener("submit", handleMovementSubmit);
+els.addSupplier.addEventListener("click", addSupplier);
+els.deleteSupplier.addEventListener("click", deleteSupplier);
 els.loginButton.addEventListener("click", handleLogin);
 els.logoutButton.addEventListener("click", handleLogout);
 els.refreshData.addEventListener("click", refreshFromCloud);
