@@ -2,7 +2,7 @@ const STORAGE_KEY = "restaurant-inventory-items-v3";
 const HISTORY_KEY = "restaurant-inventory-history-v3";
 const SUPPLIER_KEY = "restaurant-inventory-suppliers-v1";
 
-const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ"];
+const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類"];
 
 let items = [];
 let history = [];
