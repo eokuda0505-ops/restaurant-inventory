@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>THE PORT 在庫管理</title>
-  <link rel="stylesheet" href="styles.css?v=20260709-costings">
+  <link rel="stylesheet" href="styles.css?v=20260709-costing-categories">
 </head>
 <body>
   <main class="app-shell">
     <header class="topbar">
       <div>
         <p class="eyebrow">THE PORT Inventory</p>
-        <h1>THE PORT 在庫管理</h1>
+        <h1 id="appTitle">THE PORT 在庫管理</h1>
       </div>
       <div class="top-actions">
         <div class="auth-panel" id="authPanel">
@@ -143,6 +143,15 @@
           <input id="costingSearchInput" type="search" placeholder="メニュー名・メモ">
         </label>
         <label>
+          カテゴリー
+          <select id="costingCategoryFilter">
+            <option value="all">すべて</option>
+            <option value="FOOD">FOOD</option>
+            <option value="DESERT">DESERT</option>
+            <option value="DRINKU">DRINKU</option>
+          </select>
+        </label>
+        <label>
           原価率
           <select id="costingStatusFilter">
             <option value="all">すべて</option>
@@ -157,7 +166,7 @@
       <section class="costing-area">
         <div class="inventory-toolbar">
           <div>
-            <h2>メニュー別 原価計算</h2>
+            <h2>THE PORT原価</h2>
             <p id="costingResultCount">0件を表示中</p>
           </div>
           <select id="costingSortSelect" aria-label="原価計算の並び替え">
@@ -298,6 +307,14 @@
           <input id="costingName" required maxlength="80" placeholder="例: THE PORTバーガー">
         </label>
         <label>
+          カテゴリー
+          <select id="costingCategory" required>
+            <option value="FOOD">FOOD</option>
+            <option value="DESERT">DESERT</option>
+            <option value="DRINKU">DRINKU</option>
+          </select>
+        </label>
+        <label>
           販売価格
           <input id="costingSalePrice" type="number" min="0" step="1" placeholder="税込/税抜は店舗ルールで統一">
         </label>
@@ -336,6 +353,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
-  <script src="app.js?v=20260709-costings"></script>
+  <script src="app.js?v=20260709-costing-categories"></script>
 </body>
 </html>

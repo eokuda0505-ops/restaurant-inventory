@@ -4,6 +4,7 @@ const SUPPLIER_KEY = "restaurant-inventory-suppliers-v1";
 const COSTINGS_KEY = "restaurant-inventory-costings-v1";
 
 const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類"];
+const costingCategoryOptions = ["FOOD", "DESERT", "DRINKU"];
 
 let items = [];
 let history = [];
@@ -25,6 +26,7 @@ const quantityFormat = new Intl.NumberFormat("ja-JP", {
 });
 
 const els = {
+  appTitle: document.querySelector("#appTitle"),
   totalItems: document.querySelector("#totalItems"),
   totalStock: document.querySelector("#totalStock"),
   lowStock: document.querySelector("#lowStock"),
@@ -66,6 +68,7 @@ const els = {
   tabButtons: document.querySelectorAll(".tab-button"),
   viewPanels: document.querySelectorAll(".app-view"),
   costingSearchInput: document.querySelector("#costingSearchInput"),
+  costingCategoryFilter: document.querySelector("#costingCategoryFilter"),
   costingStatusFilter: document.querySelector("#costingStatusFilter"),
   costingSortSelect: document.querySelector("#costingSortSelect"),
   clearCostingFilters: document.querySelector("#clearCostingFilters"),
@@ -78,6 +81,7 @@ const els = {
   costingForm: document.querySelector("#costingForm"),
   costingFormTitle: document.querySelector("#costingFormTitle"),
   costingName: document.querySelector("#costingName"),
+  costingCategory: document.querySelector("#costingCategory"),
   costingSalePrice: document.querySelector("#costingSalePrice"),
   costingYield: document.querySelector("#costingYield"),
   costingNote: document.querySelector("#costingNote"),
@@ -274,9 +278,11 @@ function readLocalCostings() {
 }
 
 function normalizeCosting(costing) {
+  const inferredCategory = costing.category ?? inferCostingCategory(costing);
   return {
     id: costing.id ?? crypto.randomUUID(),
     name: costing.name ?? "",
+    category: costingCategoryOptions.includes(inferredCategory) ? inferredCategory : "FOOD",
     salePrice: Number(costing.salePrice) || 0,
     yieldCount: Math.max(1, Number(costing.yieldCount) || 1),
     note: costing.note ?? "",
@@ -284,6 +290,13 @@ function normalizeCosting(costing) {
       ? costing.ingredients.map(normalizeIngredient).filter((ingredient) => (ingredient.itemId || ingredient.name) && (ingredient.quantity > 0 || ingredient.cost > 0))
       : []
   };
+}
+
+function inferCostingCategory(costing) {
+  const id = String(costing.id ?? "");
+  const note = String(costing.note ?? "");
+  if (id.startsWith("excel-alcohol") || note.includes("アルコール")) return "DRINKU";
+  return "FOOD";
 }
 
 function normalizeIngredient(ingredient) {
@@ -440,6 +453,7 @@ function fromDbCosting(row) {
   return {
     id: row.id,
     name: row.name,
+    category: row.category,
     salePrice: row.sale_price,
     yieldCount: row.yield_count,
     note: row.note,
@@ -452,6 +466,7 @@ function toDbCosting(costing) {
   return {
     id: normalized.id,
     name: normalized.name,
+    category: normalized.category,
     sale_price: normalized.salePrice,
     yield_count: normalized.yieldCount,
     note: normalized.note,
@@ -651,6 +666,7 @@ function renderCostings() {
       <div class="costing-card-header">
         <div>
           <h3>${escapeHtml(costing.name)}</h3>
+          <span class="costing-category-badge">${escapeHtml(costing.category)}</span>
           ${costing.note ? `<p>${escapeHtml(costing.note)}</p>` : ""}
         </div>
         <div class="row-actions">
@@ -696,6 +712,7 @@ function renderIngredientLine(line) {
 
 function getVisibleCostings() {
   const query = els.costingSearchInput.value.trim().toLowerCase();
+  const category = els.costingCategoryFilter.value;
   const status = els.costingStatusFilter.value;
   const sort = els.costingSortSelect.value;
 
@@ -703,11 +720,12 @@ function getVisibleCostings() {
     const summary = calculateCosting(costing);
     const haystack = `${costing.name} ${costing.note}`.toLowerCase();
     const matchesQuery = haystack.includes(query);
+    const matchesCategory = category === "all" || costing.category === category;
     const matchesStatus =
       status === "all" ||
       (status === "high" && summary.rate >= 35) ||
       (status === "unset" && Number(costing.salePrice) <= 0);
-    return matchesQuery && matchesStatus;
+    return matchesQuery && matchesCategory && matchesStatus;
   });
 
   return filtered.sort((a, b) => {
@@ -830,6 +848,7 @@ function openCostingForm(costing = null) {
   els.ingredientRows.innerHTML = "";
   els.costingYield.value = costing?.yieldCount ?? 1;
   els.costingName.value = costing?.name ?? "";
+  els.costingCategory.value = costing?.category ?? "FOOD";
   els.costingSalePrice.value = costing?.salePrice || "";
   els.costingNote.value = costing?.note ?? "";
 
@@ -901,6 +920,7 @@ function updateCostingPreview() {
   const draft = normalizeCosting({
     id: editingCostingId ?? "preview",
     name: els.costingName.value,
+    category: els.costingCategory.value,
     salePrice: els.costingSalePrice.value,
     yieldCount: els.costingYield.value,
     note: els.costingNote.value,
@@ -916,6 +936,7 @@ function handleCostingSubmit(event) {
   const formCosting = normalizeCosting({
     id: editingCostingId ?? crypto.randomUUID(),
     name: els.costingName.value.trim(),
+    category: els.costingCategory.value,
     salePrice: els.costingSalePrice.value,
     yieldCount: els.costingYield.value,
     note: els.costingNote.value.trim(),
@@ -1159,11 +1180,11 @@ els.importCsv.addEventListener("change", (event) => {
   element.addEventListener("input", render);
 });
 
-[els.costingSearchInput, els.costingStatusFilter, els.costingSortSelect].forEach((element) => {
+[els.costingSearchInput, els.costingCategoryFilter, els.costingStatusFilter, els.costingSortSelect].forEach((element) => {
   element.addEventListener("input", renderCostings);
 });
 
-[els.costingName, els.costingSalePrice, els.costingYield, els.costingNote].forEach((element) => {
+[els.costingName, els.costingCategory, els.costingSalePrice, els.costingYield, els.costingNote].forEach((element) => {
   element.addEventListener("input", updateCostingPreview);
 });
 
@@ -1191,6 +1212,8 @@ els.tabButtons.forEach((button) => {
     const view = button.dataset.view;
     els.tabButtons.forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
     els.viewPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === view));
+    els.appTitle.textContent = view === "costing" ? "THE PORT原価" : "THE PORT 在庫管理";
+    document.title = view === "costing" ? "THE PORT原価" : "THE PORT 在庫管理";
   });
 });
 
@@ -1205,6 +1228,7 @@ els.clearFilters.addEventListener("click", () => {
 
 els.clearCostingFilters.addEventListener("click", () => {
   els.costingSearchInput.value = "";
+  els.costingCategoryFilter.value = "all";
   els.costingStatusFilter.value = "all";
   els.costingSortSelect.value = "name";
   renderCostings();
