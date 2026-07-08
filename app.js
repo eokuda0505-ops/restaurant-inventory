@@ -742,7 +742,9 @@ function calculateCosting(costing) {
     const item = items.find((entry) => entry.id === ingredient.itemId);
     const cost = item
       ? Number(item.unitPrice) * Number(ingredient.quantity)
-      : Number(ingredient.cost) || Number(ingredient.unitPrice) * Number(ingredient.quantity);
+      : Number(ingredient.unitPrice) > 0
+        ? Number(ingredient.quantity) * Number(ingredient.unitPrice)
+        : Number(ingredient.cost) || 0;
     return { ...ingredient, item, cost };
   });
   const totalCost = lines.reduce((sum, line) => sum + line.cost, 0);
@@ -884,10 +886,17 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
       <input class="ingredient-quantity" type="number" min="0.01" step="0.01" required>
     </label>
     <label>
+      単位
+      <select class="ingredient-unit">
+        <option value="枚">枚</option>
+        <option value="g">g</option>
+        <option value="人前">人前</option>
+      </select>
+    </label>
+    <label>
       単価
       <input class="ingredient-unit-price" type="number" min="0" step="0.01" placeholder="在庫未紐づけ時">
     </label>
-    <input class="ingredient-unit" type="hidden">
     <input class="ingredient-cost" type="hidden">
     <input class="ingredient-memo" type="hidden">
     <button class="icon-button remove-ingredient" type="button" title="材料を削除" aria-label="材料を削除">×</button>
@@ -896,10 +905,15 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
   row.querySelector(".ingredient-name").value = ingredient.name ?? "";
   row.querySelector(".ingredient-quantity").value = ingredient.quantity ?? 1;
   row.querySelector(".ingredient-unit-price").value = ingredient.unitPrice || "";
-  row.querySelector(".ingredient-unit").value = ingredient.unit ?? "";
+  setIngredientUnit(row.querySelector(".ingredient-unit"), ingredient.unit ?? "g");
   row.querySelector(".ingredient-cost").value = ingredient.cost || "";
   row.querySelector(".ingredient-memo").value = ingredient.memo ?? "";
   els.ingredientRows.append(row);
+}
+
+function setIngredientUnit(select, unit) {
+  const normalizedUnit = ["枚", "g", "人前"].includes(unit) ? unit : "g";
+  select.value = normalizedUnit;
 }
 
 function getCostingFormIngredients() {
@@ -1198,7 +1212,7 @@ els.ingredientRows.addEventListener("click", (event) => {
     rows[0].querySelector(".ingredient-name").value = "";
     rows[0].querySelector(".ingredient-quantity").value = 1;
     rows[0].querySelector(".ingredient-unit-price").value = "";
-    rows[0].querySelector(".ingredient-unit").value = "";
+    rows[0].querySelector(".ingredient-unit").value = "g";
     rows[0].querySelector(".ingredient-cost").value = "";
     rows[0].querySelector(".ingredient-memo").value = "";
   } else {
