@@ -704,7 +704,7 @@ function renderIngredientLine(line) {
   return `
     <div class="ingredient-line ${line.item || line.name ? "" : "missing"}">
       <span>${escapeHtml(line.item?.name ?? line.name ?? "材料名未設定")}</span>
-      <span>${formatQuantity(line.quantity)} ${escapeHtml(line.item?.unit ?? line.unit ?? "")}</span>
+      <span>${formatQuantity(line.quantity)} ${escapeHtml(line.unit || line.item?.unit || "")}</span>
       <strong>${yen.format(line.cost)}</strong>
     </div>
   `;
@@ -740,11 +740,8 @@ function getVisibleCostings() {
 function calculateCosting(costing) {
   const lines = costing.ingredients.map((ingredient) => {
     const item = items.find((entry) => entry.id === ingredient.itemId);
-    const cost = item
-      ? Number(item.unitPrice) * Number(ingredient.quantity)
-      : Number(ingredient.unitPrice) > 0
-        ? Number(ingredient.quantity) * Number(ingredient.unitPrice)
-        : Number(ingredient.cost) || 0;
+    const unitPrice = Number(ingredient.unitPrice) > 0 ? Number(ingredient.unitPrice) : Number(item?.unitPrice) || 0;
+    const cost = unitPrice > 0 ? Number(ingredient.quantity) * unitPrice : Number(ingredient.cost) || 0;
     return { ...ingredient, item, cost };
   });
   const totalCost = lines.reduce((sum, line) => sum + line.cost, 0);
@@ -912,8 +909,25 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
 }
 
 function setIngredientUnit(select, unit) {
-  const normalizedUnit = ["枚", "g", "人前"].includes(unit) ? unit : "g";
+  const normalizedUnit = normalizeCostingUnit(unit);
   select.value = normalizedUnit;
+}
+
+function normalizeCostingUnit(unit) {
+  if (unit === "g" || unit === "枚" || unit === "人前") return unit;
+  if (["本", "個", "玉", "pac", "缶", "ケース", "束"].includes(unit)) return "枚";
+  return "g";
+}
+
+function syncIngredientRowFromItem(row) {
+  const item = items.find((entry) => entry.id === row.querySelector(".ingredient-item").value);
+  if (!item) return;
+
+  row.querySelector(".ingredient-name").value = item.name;
+  const unitPriceInput = row.querySelector(".ingredient-unit-price");
+  if (!Number(unitPriceInput.value)) unitPriceInput.value = Number(item.unitPrice) || "";
+  setIngredientUnit(row.querySelector(".ingredient-unit"), item.unit);
+  row.querySelector(".ingredient-cost").value = "";
 }
 
 function getCostingFormIngredients() {
@@ -1202,7 +1216,20 @@ els.importCsv.addEventListener("change", (event) => {
   element.addEventListener("input", updateCostingPreview);
 });
 
-els.ingredientRows.addEventListener("input", updateCostingPreview);
+els.ingredientRows.addEventListener("input", (event) => {
+  if (event.target.classList.contains("ingredient-quantity") || event.target.classList.contains("ingredient-unit-price")) {
+    const row = event.target.closest(".ingredient-row");
+    if (row) row.querySelector(".ingredient-cost").value = "";
+  }
+  updateCostingPreview();
+});
+els.ingredientRows.addEventListener("change", (event) => {
+  const row = event.target.closest(".ingredient-row");
+  if (!row) return;
+  if (event.target.classList.contains("ingredient-item")) syncIngredientRowFromItem(row);
+  if (event.target.classList.contains("ingredient-unit-price")) row.querySelector(".ingredient-cost").value = "";
+  updateCostingPreview();
+});
 els.ingredientRows.addEventListener("click", (event) => {
   const button = event.target.closest(".remove-ingredient");
   if (!button) return;
