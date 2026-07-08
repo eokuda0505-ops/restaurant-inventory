@@ -35,6 +35,11 @@
       </div>
     </header>
 
+    <nav class="view-tabs" aria-label="表示切り替え">
+      <button class="tab-button active" data-view="inventory" type="button">在庫管理</button>
+      <button class="tab-button" data-view="costing" type="button">原価計算</button>
+    </nav>
+
     <section class="summary-grid" aria-label="在庫サマリー">
       <article class="metric">
           <span>登録品目</span>
@@ -54,7 +59,7 @@
       </article>
     </section>
 
-    <section class="workspace">
+    <section class="workspace app-view active" data-view-panel="inventory">
       <aside class="side-panel">
         <div class="panel-header">
           <h2>絞り込み</h2>
@@ -123,6 +128,48 @@
         <div class="empty-state" id="emptyState" hidden>
           <h3>登録品目がありません</h3>
           <p>右上の「食材・資材を追加」から最初の品目を登録してください。</p>
+        </div>
+      </section>
+    </section>
+
+    <section class="costing-layout app-view" data-view-panel="costing">
+      <aside class="side-panel">
+        <div class="panel-header">
+          <h2>メニュー</h2>
+          <button class="ghost-button" id="clearCostingFilters" type="button">解除</button>
+        </div>
+        <label>
+          検索
+          <input id="costingSearchInput" type="search" placeholder="メニュー名・メモ">
+        </label>
+        <label>
+          原価率
+          <select id="costingStatusFilter">
+            <option value="all">すべて</option>
+            <option value="high">35%以上</option>
+            <option value="unset">販売価格未設定</option>
+          </select>
+        </label>
+        <button class="primary-button full-button" id="openCostingForm" type="button">メニュー原価を追加</button>
+        <button class="ghost-button full-button" id="exportCostingCsv" type="button">原価一覧CSV</button>
+      </aside>
+
+      <section class="costing-area">
+        <div class="inventory-toolbar">
+          <div>
+            <h2>メニュー別 原価計算</h2>
+            <p id="costingResultCount">0件を表示中</p>
+          </div>
+          <select id="costingSortSelect" aria-label="原価計算の並び替え">
+            <option value="name">メニュー名順</option>
+            <option value="costDesc">原価が高い順</option>
+            <option value="rateDesc">原価率が高い順</option>
+          </select>
+        </div>
+        <div class="costing-grid" id="costingGrid"></div>
+        <div class="empty-state" id="costingEmptyState" hidden>
+          <h3>メニュー原価がありません</h3>
+          <p>「メニュー原価を追加」から、料理やドリンクごとの材料を登録してください。</p>
         </div>
       </section>
     </section>
@@ -235,6 +282,54 @@
       <div class="modal-actions">
         <button class="ghost-button" value="cancel" type="button" id="cancelMovement">キャンセル</button>
         <button class="primary-button" type="submit">反映</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="costingDialog">
+    <form method="dialog" class="item-form costing-form" id="costingForm">
+      <div class="modal-header">
+        <h2 id="costingFormTitle">メニュー原価を追加</h2>
+        <button class="icon-button" value="cancel" title="閉じる" aria-label="閉じる">×</button>
+      </div>
+      <div class="form-grid">
+        <label>
+          メニュー名
+          <input id="costingName" required maxlength="80" placeholder="例: THE PORTバーガー">
+        </label>
+        <label>
+          販売価格
+          <input id="costingSalePrice" type="number" min="0" step="1" placeholder="税込/税抜は店舗ルールで統一">
+        </label>
+        <label>
+          仕込み単位
+          <input id="costingYield" type="number" min="1" step="1" required value="1">
+        </label>
+        <label>
+          メモ
+          <input id="costingNote" maxlength="120" placeholder="例: ランチメニュー、季節限定">
+        </label>
+      </div>
+
+      <div class="ingredient-editor">
+        <div class="panel-header">
+          <h3>使用材料</h3>
+          <button class="ghost-button" id="addIngredientRow" type="button">材料を追加</button>
+        </div>
+        <div class="ingredient-rows" id="ingredientRows"></div>
+        <p class="form-help">数量は在庫マスターの単位と合わせて入力します。例: トマト 0.5玉、牛肉 0.12kg。</p>
+      </div>
+
+      <div class="costing-preview">
+        <span>1食あたり原価</span>
+        <strong id="costingPreviewCost">¥0</strong>
+        <span>原価率</span>
+        <strong id="costingPreviewRate">-</strong>
+      </div>
+
+      <div class="modal-actions">
+        <button class="ghost-button" value="cancel" type="button" id="cancelCostingForm">キャンセル</button>
+        <button class="primary-button" type="submit">保存</button>
       </div>
     </form>
   </dialog>

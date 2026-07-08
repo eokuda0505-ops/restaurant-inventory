@@ -1,12 +1,15 @@
 const STORAGE_KEY = "restaurant-inventory-items-v3";
 const HISTORY_KEY = "restaurant-inventory-history-v3";
 const SUPPLIER_KEY = "restaurant-inventory-suppliers-v1";
+const COSTINGS_KEY = "restaurant-inventory-costings-v1";
 
 const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類"];
 
 let items = [];
 let history = [];
+let costings = [];
 let editingId = null;
+let editingCostingId = null;
 let supabaseClient = null;
 let currentUser = null;
 let syncTimer = null;
@@ -59,7 +62,30 @@ const els = {
   loginPassword: document.querySelector("#loginPassword"),
   loginButton: document.querySelector("#loginButton"),
   logoutButton: document.querySelector("#logoutButton"),
-  authStatus: document.querySelector("#authStatus")
+  authStatus: document.querySelector("#authStatus"),
+  tabButtons: document.querySelectorAll(".tab-button"),
+  viewPanels: document.querySelectorAll(".app-view"),
+  costingSearchInput: document.querySelector("#costingSearchInput"),
+  costingStatusFilter: document.querySelector("#costingStatusFilter"),
+  costingSortSelect: document.querySelector("#costingSortSelect"),
+  clearCostingFilters: document.querySelector("#clearCostingFilters"),
+  costingGrid: document.querySelector("#costingGrid"),
+  costingResultCount: document.querySelector("#costingResultCount"),
+  costingEmptyState: document.querySelector("#costingEmptyState"),
+  openCostingForm: document.querySelector("#openCostingForm"),
+  exportCostingCsv: document.querySelector("#exportCostingCsv"),
+  costingDialog: document.querySelector("#costingDialog"),
+  costingForm: document.querySelector("#costingForm"),
+  costingFormTitle: document.querySelector("#costingFormTitle"),
+  costingName: document.querySelector("#costingName"),
+  costingSalePrice: document.querySelector("#costingSalePrice"),
+  costingYield: document.querySelector("#costingYield"),
+  costingNote: document.querySelector("#costingNote"),
+  ingredientRows: document.querySelector("#ingredientRows"),
+  addIngredientRow: document.querySelector("#addIngredientRow"),
+  costingPreviewCost: document.querySelector("#costingPreviewCost"),
+  costingPreviewRate: document.querySelector("#costingPreviewRate"),
+  cancelCostingForm: document.querySelector("#cancelCostingForm")
 };
 
 function hasSupabaseConfig() {
@@ -208,6 +234,35 @@ function normalizeItem(item) {
   };
 }
 
+function loadCostings() {
+  try {
+    return JSON.parse(localStorage.getItem(COSTINGS_KEY) || "[]").map(normalizeCosting);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeCosting(costing) {
+  return {
+    id: costing.id ?? crypto.randomUUID(),
+    name: costing.name ?? "",
+    salePrice: Number(costing.salePrice) || 0,
+    yieldCount: Math.max(1, Number(costing.yieldCount) || 1),
+    note: costing.note ?? "",
+    ingredients: Array.isArray(costing.ingredients)
+      ? costing.ingredients.map(normalizeIngredient).filter((ingredient) => ingredient.itemId && ingredient.quantity > 0)
+      : []
+  };
+}
+
+function normalizeIngredient(ingredient) {
+  return {
+    itemId: ingredient.itemId ?? "",
+    quantity: Number(ingredient.quantity) || 0,
+    memo: ingredient.memo ?? ""
+  };
+}
+
 function cleanNote(note) {
   return String(note ?? "")
     .replace(/\s*\/?\s*シート[:：].*$/u, "")
@@ -269,6 +324,10 @@ async function saveHistory() {
 
     if (error) console.warn(`履歴保存に失敗しました: ${error.message}`);
   }
+}
+
+function saveCostings() {
+  localStorage.setItem(COSTINGS_KEY, JSON.stringify(costings));
 }
 
 function fromDbItem(row) {
@@ -338,6 +397,7 @@ function render() {
   renderCategoryFilter();
   renderSupplierFilter();
   renderTable(getVisibleItems());
+  renderCostings();
 }
 
 function renderSummary() {
@@ -510,6 +570,105 @@ function renderTable(visibleItems) {
   });
 }
 
+function renderCostings() {
+  const visibleCostings = getVisibleCostings();
+  els.costingGrid.innerHTML = "";
+  els.costingResultCount.textContent = `${visibleCostings.length}件を表示中`;
+  els.costingEmptyState.hidden = costings.length !== 0;
+
+  visibleCostings.forEach((costing) => {
+    const summary = calculateCosting(costing);
+    const article = document.createElement("article");
+    article.className = "costing-card";
+    article.innerHTML = `
+      <div class="costing-card-header">
+        <div>
+          <h3>${escapeHtml(costing.name)}</h3>
+          ${costing.note ? `<p>${escapeHtml(costing.note)}</p>` : ""}
+        </div>
+        <div class="row-actions">
+          <button class="icon-button" data-costing-action="edit" data-id="${costing.id}" title="編集" aria-label="編集">✎</button>
+          <button class="icon-button" data-costing-action="delete" data-id="${costing.id}" title="削除" aria-label="削除">×</button>
+        </div>
+      </div>
+      <div class="costing-metrics">
+        <div>
+          <span>1食原価</span>
+          <strong>${yen.format(summary.costPerServing)}</strong>
+        </div>
+        <div>
+          <span>販売価格</span>
+          <strong>${costing.salePrice > 0 ? yen.format(costing.salePrice) : "-"}</strong>
+        </div>
+        <div class="${summary.rate >= 35 ? "high-rate" : ""}">
+          <span>原価率</span>
+          <strong>${formatRate(summary.rate)}</strong>
+        </div>
+        <div>
+          <span>粗利</span>
+          <strong>${costing.salePrice > 0 ? yen.format(costing.salePrice - summary.costPerServing) : "-"}</strong>
+        </div>
+      </div>
+      <div class="ingredient-list">
+        ${summary.lines.length ? summary.lines.map(renderIngredientLine).join("") : '<p class="muted-text">材料が登録されていません。</p>'}
+      </div>
+    `;
+    els.costingGrid.append(article);
+  });
+}
+
+function renderIngredientLine(line) {
+  return `
+    <div class="ingredient-line ${line.item ? "" : "missing"}">
+      <span>${escapeHtml(line.item?.name ?? "削除済みの材料")}</span>
+      <span>${formatQuantity(line.quantity)} ${escapeHtml(line.item?.unit ?? "")}</span>
+      <strong>${yen.format(line.cost)}</strong>
+    </div>
+  `;
+}
+
+function getVisibleCostings() {
+  const query = els.costingSearchInput.value.trim().toLowerCase();
+  const status = els.costingStatusFilter.value;
+  const sort = els.costingSortSelect.value;
+
+  const filtered = costings.filter((costing) => {
+    const summary = calculateCosting(costing);
+    const haystack = `${costing.name} ${costing.note}`.toLowerCase();
+    const matchesQuery = haystack.includes(query);
+    const matchesStatus =
+      status === "all" ||
+      (status === "high" && summary.rate >= 35) ||
+      (status === "unset" && Number(costing.salePrice) <= 0);
+    return matchesQuery && matchesStatus;
+  });
+
+  return filtered.sort((a, b) => {
+    const summaryA = calculateCosting(a);
+    const summaryB = calculateCosting(b);
+    if (sort === "costDesc") return summaryB.costPerServing - summaryA.costPerServing;
+    if (sort === "rateDesc") return summaryB.rate - summaryA.rate;
+    return a.name.localeCompare(b.name, "ja");
+  });
+}
+
+function calculateCosting(costing) {
+  const lines = costing.ingredients.map((ingredient) => {
+    const item = items.find((entry) => entry.id === ingredient.itemId);
+    const cost = item ? Number(item.unitPrice) * Number(ingredient.quantity) : 0;
+    return { ...ingredient, item, cost };
+  });
+  const totalCost = lines.reduce((sum, line) => sum + line.cost, 0);
+  const costPerServing = totalCost / Math.max(1, Number(costing.yieldCount) || 1);
+  const rate = Number(costing.salePrice) > 0 ? (costPerServing / Number(costing.salePrice)) * 100 : 0;
+  return { lines, totalCost, costPerServing, rate };
+}
+
+function formatRate(value) {
+  if (!Number.isFinite(value) || value <= 0) return "-";
+  return `${quantityFormat.format(value)}%`;
+}
+
 function formatQuantity(value) {
   return quantityFormat.format(Number(value) || 0);
 }
@@ -593,6 +752,114 @@ function openMovementForm(id, type) {
 
 function closeMovementForm() {
   els.movementDialog.close();
+}
+
+function openCostingForm(costing = null) {
+  editingCostingId = costing?.id ?? null;
+  els.costingFormTitle.textContent = costing ? "メニュー原価を編集" : "メニュー原価を追加";
+  els.costingForm.reset();
+  els.ingredientRows.innerHTML = "";
+  els.costingYield.value = costing?.yieldCount ?? 1;
+  els.costingName.value = costing?.name ?? "";
+  els.costingSalePrice.value = costing?.salePrice || "";
+  els.costingNote.value = costing?.note ?? "";
+
+  const ingredients = costing?.ingredients?.length ? costing.ingredients : [{ itemId: "", quantity: 1, memo: "" }];
+  ingredients.forEach((ingredient) => addIngredientRow(ingredient));
+  updateCostingPreview();
+  els.costingDialog.showModal();
+  els.costingName.focus();
+}
+
+function closeCostingForm() {
+  els.costingDialog.close();
+  editingCostingId = null;
+}
+
+function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
+  const row = document.createElement("div");
+  row.className = "ingredient-row";
+  row.innerHTML = `
+    <label>
+      材料
+      <select class="ingredient-item" required>
+        <option value="">選択してください</option>
+        ${items.map((item) => `<option value="${item.id}">${escapeHtml(item.name)} / ${escapeHtml(item.unit)} / ${yen.format(Number(item.unitPrice))}</option>`).join("")}
+      </select>
+    </label>
+    <label>
+      使用量
+      <input class="ingredient-quantity" type="number" min="0.01" step="0.01" required>
+    </label>
+    <label>
+      メモ
+      <input class="ingredient-memo" maxlength="60" placeholder="任意">
+    </label>
+    <button class="icon-button remove-ingredient" type="button" title="材料を削除" aria-label="材料を削除">×</button>
+  `;
+  row.querySelector(".ingredient-item").value = ingredient.itemId ?? "";
+  row.querySelector(".ingredient-quantity").value = ingredient.quantity ?? 1;
+  row.querySelector(".ingredient-memo").value = ingredient.memo ?? "";
+  els.ingredientRows.append(row);
+}
+
+function getCostingFormIngredients() {
+  return [...els.ingredientRows.querySelectorAll(".ingredient-row")]
+    .map((row) => normalizeIngredient({
+      itemId: row.querySelector(".ingredient-item").value,
+      quantity: row.querySelector(".ingredient-quantity").value,
+      memo: row.querySelector(".ingredient-memo").value.trim()
+    }))
+    .filter((ingredient) => ingredient.itemId && ingredient.quantity > 0);
+}
+
+function updateCostingPreview() {
+  const draft = normalizeCosting({
+    id: editingCostingId ?? "preview",
+    name: els.costingName.value,
+    salePrice: els.costingSalePrice.value,
+    yieldCount: els.costingYield.value,
+    note: els.costingNote.value,
+    ingredients: getCostingFormIngredients()
+  });
+  const summary = calculateCosting(draft);
+  els.costingPreviewCost.textContent = yen.format(summary.costPerServing);
+  els.costingPreviewRate.textContent = formatRate(summary.rate);
+}
+
+function handleCostingSubmit(event) {
+  event.preventDefault();
+  const formCosting = normalizeCosting({
+    id: editingCostingId ?? crypto.randomUUID(),
+    name: els.costingName.value.trim(),
+    salePrice: els.costingSalePrice.value,
+    yieldCount: els.costingYield.value,
+    note: els.costingNote.value.trim(),
+    ingredients: getCostingFormIngredients()
+  });
+
+  if (formCosting.ingredients.length === 0) {
+    alert("使用材料を1つ以上登録してください。");
+    return;
+  }
+
+  if (editingCostingId) {
+    costings = costings.map((costing) => (costing.id === editingCostingId ? formCosting : costing));
+  } else {
+    costings.push(formCosting);
+  }
+
+  saveCostings();
+  closeCostingForm();
+  renderCostings();
+}
+
+function deleteCosting(id) {
+  const costing = costings.find((entry) => entry.id === id);
+  if (!costing || !confirm(`${costing.name}を削除しますか？`)) return;
+  costings = costings.filter((entry) => entry.id !== id);
+  saveCostings();
+  renderCostings();
 }
 
 function handleMovementSubmit(event) {
@@ -679,6 +946,32 @@ function exportCsv() {
   URL.revokeObjectURL(link.href);
 }
 
+function exportCostingCsv() {
+  const rows = [
+    ["メニュー名", "販売価格", "仕込み単位", "1食原価", "原価率", "粗利", "材料", "メモ"],
+    ...costings.map((costing) => {
+      const summary = calculateCosting(costing);
+      return [
+        costing.name,
+        costing.salePrice,
+        costing.yieldCount,
+        Math.round(summary.costPerServing),
+        formatRate(summary.rate),
+        costing.salePrice > 0 ? Math.round(costing.salePrice - summary.costPerServing) : "",
+        summary.lines.map((line) => `${line.item?.name ?? "削除済み"} ${formatQuantity(line.quantity)}${line.item?.unit ?? ""}`).join(" / "),
+        costing.note
+      ];
+    })
+  ];
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `menu-costings-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 function csvCell(value) {
   const text = String(value ?? "");
   return `"${text.replaceAll('"', '""')}"`;
@@ -753,6 +1046,14 @@ els.loginButton.addEventListener("click", handleLogin);
 els.logoutButton.addEventListener("click", handleLogout);
 els.refreshData.addEventListener("click", refreshFromCloud);
 els.exportCsv.addEventListener("click", exportCsv);
+els.openCostingForm.addEventListener("click", () => openCostingForm());
+els.cancelCostingForm.addEventListener("click", closeCostingForm);
+els.costingForm.addEventListener("submit", handleCostingSubmit);
+els.addIngredientRow.addEventListener("click", () => {
+  addIngredientRow();
+  updateCostingPreview();
+});
+els.exportCostingCsv.addEventListener("click", exportCostingCsv);
 els.importCsv.addEventListener("change", (event) => {
   const [file] = event.target.files;
   if (file) importCsv(file);
@@ -763,6 +1064,37 @@ els.importCsv.addEventListener("change", (event) => {
   element.addEventListener("input", render);
 });
 
+[els.costingSearchInput, els.costingStatusFilter, els.costingSortSelect].forEach((element) => {
+  element.addEventListener("input", renderCostings);
+});
+
+[els.costingName, els.costingSalePrice, els.costingYield, els.costingNote].forEach((element) => {
+  element.addEventListener("input", updateCostingPreview);
+});
+
+els.ingredientRows.addEventListener("input", updateCostingPreview);
+els.ingredientRows.addEventListener("click", (event) => {
+  const button = event.target.closest(".remove-ingredient");
+  if (!button) return;
+  const rows = els.ingredientRows.querySelectorAll(".ingredient-row");
+  if (rows.length === 1) {
+    rows[0].querySelector(".ingredient-item").value = "";
+    rows[0].querySelector(".ingredient-quantity").value = 1;
+    rows[0].querySelector(".ingredient-memo").value = "";
+  } else {
+    button.closest(".ingredient-row").remove();
+  }
+  updateCostingPreview();
+});
+
+els.tabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const view = button.dataset.view;
+    els.tabButtons.forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
+    els.viewPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === view));
+  });
+});
+
 els.clearFilters.addEventListener("click", () => {
   els.searchInput.value = "";
   els.categoryFilter.value = "";
@@ -770,6 +1102,13 @@ els.clearFilters.addEventListener("click", () => {
   els.statusFilter.value = "all";
   els.sortSelect.value = "name";
   render();
+});
+
+els.clearCostingFilters.addEventListener("click", () => {
+  els.costingSearchInput.value = "";
+  els.costingStatusFilter.value = "all";
+  els.costingSortSelect.value = "name";
+  renderCostings();
 });
 
 els.table.addEventListener("click", (event) => {
@@ -785,10 +1124,22 @@ els.table.addEventListener("click", (event) => {
   if (action === "delete") deleteItem(id);
 });
 
+els.costingGrid.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-costing-action]");
+  if (!button) return;
+
+  const { costingAction, id } = button.dataset;
+  const costing = costings.find((entry) => entry.id === id);
+
+  if (costingAction === "edit" && costing) openCostingForm(costing);
+  if (costingAction === "delete") deleteCosting(id);
+});
+
 async function init() {
   if (!supabaseClient) await initSupabase();
   items = await loadItems();
   history = await loadHistory();
+  costings = loadCostings();
   render();
 }
 
