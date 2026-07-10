@@ -483,6 +483,36 @@ td {
   margin-bottom: 14px;
 }
 
+.costing-title-button {
+  appearance: none;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.costing-title-button:hover h3,
+.costing-title-button:focus-visible h3 {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.costing-title-button::after {
+  content: "商品材料詳細を表示";
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.costing-title-button[aria-expanded="true"]::after {
+  content: "商品材料詳細を閉じる";
+}
+
 .costing-card h3 {
   margin-bottom: 4px;
 }
@@ -550,6 +580,10 @@ td {
 .ingredient-rows {
   display: grid;
   gap: 10px;
+}
+
+.ingredient-list[hidden] {
+  display: none;
 }
 
 .ingredient-line {

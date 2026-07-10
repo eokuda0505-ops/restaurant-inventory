@@ -664,11 +664,11 @@ function renderCostings() {
     article.className = "costing-card";
     article.innerHTML = `
       <div class="costing-card-header">
-        <div>
+        <button class="costing-title-button" data-costing-action="toggle" data-id="${costing.id}" type="button" aria-expanded="false">
           <h3>${escapeHtml(costing.name)}</h3>
           <span class="costing-category-badge">${escapeHtml(costing.category)}</span>
           ${costing.note ? `<p>${escapeHtml(costing.note)}</p>` : ""}
-        </div>
+        </button>
         <div class="row-actions">
           <button class="icon-button" data-costing-action="edit" data-id="${costing.id}" title="編集" aria-label="編集">✎</button>
           <button class="icon-button" data-costing-action="delete" data-id="${costing.id}" title="削除" aria-label="削除">×</button>
@@ -692,7 +692,7 @@ function renderCostings() {
           <strong>${costing.salePrice > 0 ? yen.format(costing.salePrice - summary.costPerServing) : "-"}</strong>
         </div>
       </div>
-      <div class="ingredient-list">
+      <div class="ingredient-list" hidden>
         ${summary.lines.length ? summary.lines.map(renderIngredientLine).join("") : '<p class="muted-text">材料が登録されていません。</p>'}
       </div>
     `;
@@ -1316,9 +1316,21 @@ els.costingGrid.addEventListener("click", (event) => {
   const { costingAction, id } = button.dataset;
   const costing = costings.find((entry) => entry.id === id);
 
+  if (costingAction === "toggle") toggleCostingDetails(button);
   if (costingAction === "edit" && costing) openCostingForm(costing);
   if (costingAction === "delete") deleteCosting(id);
 });
+
+function toggleCostingDetails(button) {
+  const card = button.closest(".costing-card");
+  const list = card?.querySelector(".ingredient-list");
+  if (!list) return;
+
+  const willOpen = list.hidden;
+  list.hidden = !willOpen;
+  button.setAttribute("aria-expanded", String(willOpen));
+  card.classList.toggle("details-open", willOpen);
+}
 
 async function init() {
   if (!supabaseClient) await initSupabase();
