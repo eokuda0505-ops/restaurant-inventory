@@ -7,6 +7,7 @@ create table if not exists public.menu_costings (
   category text not null default 'FOOD',
   sale_price numeric not null default 0,
   yield_count numeric not null default 1,
+  sort_order integer,
   note text,
   ingredients jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
@@ -15,10 +16,29 @@ create table if not exists public.menu_costings (
 alter table public.menu_costings
 add column if not exists category text not null default 'FOOD';
 
+alter table public.menu_costings
+add column if not exists sort_order integer;
+
 update public.menu_costings
-set category = 'DRINKU'
+set category = 'DRINK'
 where category = 'FOOD'
   and (id like 'excel-alcohol-%' or note like '%アルコール%');
+
+update public.menu_costings
+set category = 'DRINK'
+where category = 'DRINKU';
+
+with ordered_costings as (
+  select
+    id,
+    row_number() over (order by coalesce(sort_order, 999999), category, name) - 1 as next_sort_order
+  from public.menu_costings
+)
+update public.menu_costings
+set sort_order = ordered_costings.next_sort_order
+from ordered_costings
+where public.menu_costings.id = ordered_costings.id
+  and public.menu_costings.sort_order is null;
 
 alter table public.menu_costings enable row level security;
 

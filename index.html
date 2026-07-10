@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>THE PORT 在庫管理</title>
-  <link rel="stylesheet" href="styles.css?v=20260710-costing-details-toggle">
+  <link rel="stylesheet" href="styles.css?v=20260710-search-reorder">
 </head>
 <body>
   <main class="app-shell">
@@ -148,7 +148,7 @@
             <option value="all">すべて</option>
             <option value="FOOD">FOOD</option>
             <option value="DESERT">DESERT</option>
-            <option value="DRINKU">DRINKU</option>
+            <option value="DRINK">DRINK</option>
           </select>
         </label>
         <label>
@@ -170,6 +170,7 @@
             <p id="costingResultCount">0件を表示中</p>
           </div>
           <select id="costingSortSelect" aria-label="原価計算の並び替え">
+            <option value="manual">指定順</option>
             <option value="name">メニュー名順</option>
             <option value="costDesc">原価が高い順</option>
             <option value="rateDesc">原価率が高い順</option>
@@ -311,7 +312,7 @@
           <select id="costingCategory" required>
             <option value="FOOD">FOOD</option>
             <option value="DESERT">DESERT</option>
-            <option value="DRINKU">DRINKU</option>
+            <option value="DRINK">DRINK</option>
           </select>
         </label>
         <label>
@@ -353,6 +354,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
-  <script src="app.js?v=20260710-costing-details-toggle"></script>
+  <script src="app.js?v=20260710-search-reorder"></script>
 </body>
 </html>

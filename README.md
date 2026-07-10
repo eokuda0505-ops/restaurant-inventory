@@ -32,6 +32,24 @@ CSV用の商品初期データは `seed-items.csv` にあります。
 3. 右上の取込ボタンから `seed-items.csv` を選ぶ
 4. 291件の商品がSupabaseへ保存される
 
+## 原価計算をクラウド保存する
+
+原価計算タブのメニュー原価をスタッフ全員で共有するには、Supabaseに `menu_costings` テーブルを追加します。
+メニュー原価は `FOOD`、`DESERT`、`DRINK` の3カテゴリで管理できます。
+商品カードの上下ボタンで並べ替えた表示順も、`supabase-menu-costings.sql` を再実行するとクラウド保存できます。
+
+すでに在庫アプリを運用中の場合:
+
+1. Supabaseを開く
+2. 左メニューの SQL Editor を開く
+3. `supabase-menu-costings.sql` の中身を貼り付ける
+4. Run を押す
+5. Excelから抽出した初期原価データを入れる場合は、続けて `supabase-menu-costings-seed.sql` の中身を貼り付けて Run を押す
+6. GitHub Pages側へ `index.html`、`styles.css`、`app.js` を反映する
+7. アプリを開き直してログインする
+
+これで原価計算タブで保存したメニュー原価がSupabaseに保存され、別端末でログインしても同じデータを見られます。
+
 ## GitHub Pages公開
 
 このフォルダ内のファイルをGitHubリポジトリへ置き、GitHub Pagesを有効化します。
@@ -43,6 +61,8 @@ CSV用の商品初期データは `seed-items.csv` にあります。
 - `app.js`
 - `supabase-config.js`
 - `supabase-schema.sql`
+- `supabase-menu-costings.sql`
+- `supabase-menu-costings-seed.sql`
 - `supabase-seed.sql`
 - `seed-items.json`
 - `seed-items.csv`
@@ -67,4 +87,3 @@ GitHubでの流れ:
 
 GitHub Pagesだけでは在庫データを保存できません。
 必ずSupabaseのURLとanon keyを `supabase-config.js` に設定してください。
-更新

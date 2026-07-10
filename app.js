@@ -4,7 +4,7 @@ const SUPPLIER_KEY = "restaurant-inventory-suppliers-v1";
 const COSTINGS_KEY = "restaurant-inventory-costings-v1";
 
 const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類"];
-const costingCategoryOptions = ["FOOD", "DESERT", "DRINKU"];
+const costingCategoryOptions = ["FOOD", "DESERT", "DRINK"];
 
 let items = [];
 let history = [];
@@ -261,7 +261,7 @@ async function loadCostings() {
       return localCostings;
     }
 
-    const cloudCostings = data.map(fromDbCosting).map(normalizeCosting);
+    const cloudCostings = normalizeCostingsList(data.map(fromDbCosting));
     localStorage.setItem(COSTINGS_KEY, JSON.stringify(cloudCostings));
     return cloudCostings;
   }
@@ -271,20 +271,32 @@ async function loadCostings() {
 
 function readLocalCostings() {
   try {
-    return JSON.parse(localStorage.getItem(COSTINGS_KEY) || "[]").map(normalizeCosting);
+    return normalizeCostingsList(JSON.parse(localStorage.getItem(COSTINGS_KEY) || "[]"));
   } catch {
     return [];
   }
 }
 
+function normalizeCostingsList(entries) {
+  return entries.map((costing, index) => {
+    const normalized = normalizeCosting(costing);
+    return {
+      ...normalized,
+      sortOrder: normalized.sortOrder === null ? index : normalized.sortOrder
+    };
+  });
+}
+
 function normalizeCosting(costing) {
-  const inferredCategory = costing.category ?? inferCostingCategory(costing);
+  const inferredCategory = normalizeCostingCategory(costing.category ?? inferCostingCategory(costing));
+  const sortOrder = Number(costing.sortOrder);
   return {
     id: costing.id ?? crypto.randomUUID(),
     name: costing.name ?? "",
     category: costingCategoryOptions.includes(inferredCategory) ? inferredCategory : "FOOD",
     salePrice: Number(costing.salePrice) || 0,
     yieldCount: Math.max(1, Number(costing.yieldCount) || 1),
+    sortOrder: Number.isFinite(sortOrder) ? sortOrder : null,
     note: costing.note ?? "",
     ingredients: Array.isArray(costing.ingredients)
       ? costing.ingredients.map(normalizeIngredient).filter((ingredient) => (ingredient.itemId || ingredient.name) && (ingredient.quantity > 0 || ingredient.cost > 0))
@@ -292,10 +304,14 @@ function normalizeCosting(costing) {
   };
 }
 
+function normalizeCostingCategory(category) {
+  return category === "DRINKU" ? "DRINK" : category;
+}
+
 function inferCostingCategory(costing) {
   const id = String(costing.id ?? "");
   const note = String(costing.note ?? "");
-  if (id.startsWith("excel-alcohol") || note.includes("アルコール")) return "DRINKU";
+  if (id.startsWith("excel-alcohol") || note.includes("アルコール")) return "DRINK";
   return "FOOD";
 }
 
@@ -383,6 +399,15 @@ async function saveCostings() {
       .from("menu_costings")
       .upsert(costings.map(toDbCosting), { onConflict: "id" });
 
+    if (error?.code === "PGRST204" || error?.code === "42703") {
+      const { error: retryError } = await supabaseClient
+        .from("menu_costings")
+        .upsert(costings.map((costing) => toDbCosting(costing, false)), { onConflict: "id" });
+
+      if (retryError) alert(`原価計算データの保存に失敗しました: ${retryError.message}`);
+      return;
+    }
+
     if (error) alert(`原価計算データの保存に失敗しました: ${error.message}`);
   }
 }
@@ -456,14 +481,15 @@ function fromDbCosting(row) {
     category: row.category,
     salePrice: row.sale_price,
     yieldCount: row.yield_count,
+    sortOrder: row.sort_order,
     note: row.note,
     ingredients: row.ingredients
   };
 }
 
-function toDbCosting(costing) {
+function toDbCosting(costing, includeSortOrder = true) {
   const normalized = normalizeCosting(costing);
-  return {
+  const row = {
     id: normalized.id,
     name: normalized.name,
     category: normalized.category,
@@ -472,6 +498,9 @@ function toDbCosting(costing) {
     note: normalized.note,
     ingredients: normalized.ingredients
   };
+
+  if (includeSortOrder) row.sort_order = normalized.sortOrder;
+  return row;
 }
 
 function render() {
@@ -670,6 +699,8 @@ function renderCostings() {
           ${costing.note ? `<p>${escapeHtml(costing.note)}</p>` : ""}
         </button>
         <div class="row-actions">
+          <button class="icon-button" data-costing-action="move-up" data-id="${costing.id}" title="上へ移動" aria-label="上へ移動">↑</button>
+          <button class="icon-button" data-costing-action="move-down" data-id="${costing.id}" title="下へ移動" aria-label="下へ移動">↓</button>
           <button class="icon-button" data-costing-action="edit" data-id="${costing.id}" title="編集" aria-label="編集">✎</button>
           <button class="icon-button" data-costing-action="delete" data-id="${costing.id}" title="削除" aria-label="削除">×</button>
         </div>
@@ -731,10 +762,18 @@ function getVisibleCostings() {
   return filtered.sort((a, b) => {
     const summaryA = calculateCosting(a);
     const summaryB = calculateCosting(b);
+    if (sort === "manual") return compareCostingSortOrder(a, b);
     if (sort === "costDesc") return summaryB.costPerServing - summaryA.costPerServing;
     if (sort === "rateDesc") return summaryB.rate - summaryA.rate;
     return a.name.localeCompare(b.name, "ja");
   });
+}
+
+function compareCostingSortOrder(a, b) {
+  const orderA = Number.isFinite(Number(a.sortOrder)) ? Number(a.sortOrder) : Number.MAX_SAFE_INTEGER;
+  const orderB = Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : Number.MAX_SAFE_INTEGER;
+  if (orderA !== orderB) return orderA - orderB;
+  return a.name.localeCompare(b.name, "ja");
 }
 
 function calculateCosting(costing) {
@@ -865,14 +904,16 @@ function closeCostingForm() {
 
 function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
   const row = document.createElement("div");
+  const itemListId = `ingredient-items-${crypto.randomUUID()}`;
   row.className = "ingredient-row";
   row.innerHTML = `
     <label>
-      在庫品目
-      <select class="ingredient-item">
-        <option value="">未紐づけ</option>
-        ${items.map((item) => `<option value="${item.id}">${escapeHtml(item.name)} / ${escapeHtml(item.unit)} / ${yen.format(Number(item.unitPrice))}</option>`).join("")}
-      </select>
+      紐付け品目
+      <input class="ingredient-item-search" list="${itemListId}" placeholder="商品名で検索">
+      <datalist id="${itemListId}">
+        ${items.map((item) => `<option value="${escapeHtml(getIngredientItemLabel(item))}"></option>`).join("")}
+      </datalist>
+      <input class="ingredient-item" type="hidden">
     </label>
     <label>
       材料名
@@ -903,6 +944,7 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
     <button class="icon-button remove-ingredient" type="button" title="材料を削除" aria-label="材料を削除">×</button>
   `;
   row.querySelector(".ingredient-item").value = ingredient.itemId ?? "";
+  row.querySelector(".ingredient-item-search").value = getIngredientSearchValue(ingredient.itemId);
   row.querySelector(".ingredient-name").value = ingredient.name ?? "";
   row.querySelector(".ingredient-quantity").value = ingredient.quantity ?? 1;
   row.querySelector(".ingredient-unit-price").value = ingredient.unitPrice || "";
@@ -911,6 +953,23 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
   row.querySelector(".ingredient-memo").value = ingredient.memo ?? "";
   els.ingredientRows.append(row);
   updateIngredientRowTotal(row);
+}
+
+function getIngredientItemLabel(item) {
+  return `${item.name} / ${item.unit} / ${yen.format(Number(item.unitPrice))}`;
+}
+
+function getIngredientSearchValue(itemId) {
+  const item = items.find((entry) => entry.id === itemId);
+  return item ? getIngredientItemLabel(item) : "";
+}
+
+function findIngredientItemBySearch(value) {
+  const searchValue = value.trim();
+  if (!searchValue) return null;
+  return items.find((item) => getIngredientItemLabel(item) === searchValue) ??
+    items.find((item) => item.name === searchValue) ??
+    null;
 }
 
 function setIngredientUnit(select, unit) {
@@ -934,6 +993,21 @@ function syncIngredientRowFromItem(row) {
   setIngredientUnit(row.querySelector(".ingredient-unit"), item.unit);
   row.querySelector(".ingredient-cost").value = "";
   updateIngredientRowTotal(row);
+}
+
+function syncIngredientRowFromSearch(row) {
+  const searchInput = row.querySelector(".ingredient-item-search");
+  const itemIdInput = row.querySelector(".ingredient-item");
+  const item = findIngredientItemBySearch(searchInput.value);
+
+  itemIdInput.value = item?.id ?? "";
+  if (!item) {
+    updateIngredientRowTotal(row);
+    return;
+  }
+
+  searchInput.value = getIngredientItemLabel(item);
+  syncIngredientRowFromItem(row);
 }
 
 function updateIngredientRowTotal(row) {
@@ -977,12 +1051,14 @@ function updateCostingPreview() {
 
 function handleCostingSubmit(event) {
   event.preventDefault();
+  const existingCosting = costings.find((costing) => costing.id === editingCostingId);
   const formCosting = normalizeCosting({
     id: editingCostingId ?? crypto.randomUUID(),
     name: els.costingName.value.trim(),
     category: els.costingCategory.value,
     salePrice: els.costingSalePrice.value,
     yieldCount: els.costingYield.value,
+    sortOrder: existingCosting?.sortOrder ?? costings.length,
     note: els.costingNote.value.trim(),
     ingredients: getCostingFormIngredients()
   });
@@ -1010,6 +1086,34 @@ function deleteCosting(id) {
   saveCostings();
   deleteRemoteCosting(id);
   renderCostings();
+}
+
+function moveCosting(id, direction) {
+  els.costingSortSelect.value = "manual";
+  applyCostingSortOrder();
+  const visibleCostings = getVisibleCostings();
+  const index = visibleCostings.findIndex((costing) => costing.id === id);
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  const current = visibleCostings[index];
+  const target = visibleCostings[targetIndex];
+  if (!current || !target) return;
+
+  const currentOrder = current.sortOrder;
+  current.sortOrder = target.sortOrder;
+  target.sortOrder = currentOrder;
+  costings = costings.map((costing) => {
+    if (costing.id === current.id) return current;
+    if (costing.id === target.id) return target;
+    return costing;
+  });
+  saveCostings();
+  renderCostings();
+}
+
+function applyCostingSortOrder() {
+  costings = [...costings]
+    .sort(compareCostingSortOrder)
+    .map((costing, index) => ({ ...costing, sortOrder: index }));
 }
 
 async function deleteRemoteCosting(id) {
@@ -1240,12 +1344,19 @@ els.ingredientRows.addEventListener("input", (event) => {
       updateIngredientRowTotal(row);
     }
   }
+  if (event.target.classList.contains("ingredient-item-search")) {
+    const row = event.target.closest(".ingredient-row");
+    if (row) {
+      row.querySelector(".ingredient-item").value = "";
+      syncIngredientRowFromSearch(row);
+    }
+  }
   updateCostingPreview();
 });
 els.ingredientRows.addEventListener("change", (event) => {
   const row = event.target.closest(".ingredient-row");
   if (!row) return;
-  if (event.target.classList.contains("ingredient-item")) syncIngredientRowFromItem(row);
+  if (event.target.classList.contains("ingredient-item-search")) syncIngredientRowFromSearch(row);
   if (event.target.classList.contains("ingredient-unit-price")) row.querySelector(".ingredient-cost").value = "";
   updateIngredientRowTotal(row);
   updateCostingPreview();
@@ -1256,6 +1367,7 @@ els.ingredientRows.addEventListener("click", (event) => {
   const rows = els.ingredientRows.querySelectorAll(".ingredient-row");
   if (rows.length === 1) {
     rows[0].querySelector(".ingredient-item").value = "";
+    rows[0].querySelector(".ingredient-item-search").value = "";
     rows[0].querySelector(".ingredient-name").value = "";
     rows[0].querySelector(".ingredient-quantity").value = 1;
     rows[0].querySelector(".ingredient-unit-price").value = "";
@@ -1292,7 +1404,7 @@ els.clearCostingFilters.addEventListener("click", () => {
   els.costingSearchInput.value = "";
   els.costingCategoryFilter.value = "all";
   els.costingStatusFilter.value = "all";
-  els.costingSortSelect.value = "name";
+  els.costingSortSelect.value = "manual";
   renderCostings();
 });
 
@@ -1317,6 +1429,8 @@ els.costingGrid.addEventListener("click", (event) => {
   const costing = costings.find((entry) => entry.id === id);
 
   if (costingAction === "toggle") toggleCostingDetails(button);
+  if (costingAction === "move-up") moveCosting(id, "up");
+  if (costingAction === "move-down") moveCosting(id, "down");
   if (costingAction === "edit" && costing) openCostingForm(costing);
   if (costingAction === "delete") deleteCosting(id);
 });
