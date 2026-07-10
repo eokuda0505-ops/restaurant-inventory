@@ -571,9 +571,29 @@ td {
 
 .ingredient-row {
   display: grid;
-  grid-template-columns: minmax(170px, 1.2fr) minmax(150px, 1fr) minmax(84px, 0.45fr) minmax(86px, 0.45fr) minmax(90px, 0.5fr) 42px;
+  grid-template-columns: minmax(160px, 1.1fr) minmax(140px, 1fr) minmax(78px, 0.45fr) minmax(78px, 0.45fr) minmax(86px, 0.5fr) minmax(96px, 0.5fr) 42px;
   gap: 10px;
   align-items: end;
+}
+
+.ingredient-row-total {
+  display: grid;
+  align-content: center;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--surface-soft);
+}
+
+.ingredient-row-total span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.ingredient-row-total strong {
+  text-align: right;
 }
 
 .costing-preview {
