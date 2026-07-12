@@ -36,6 +36,13 @@ const yen = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 0
 });
 
+const unitPriceYen = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2
+});
+
 const quantityFormat = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 2
 });
@@ -878,7 +885,7 @@ function renderTable(visibleItems) {
         </div>
       </td>
       <td>${formatQuantity(item.reorderPoint)} ${escapeHtml(item.unit)}</td>
-      <td>${yen.format(Number(item.unitPrice))}</td>
+      <td>${unitPriceYen.format(Number(item.unitPrice))}</td>
       <td>
         <div class="row-actions">
           <button class="action-button receive" data-action="receive" data-id="${item.id}" title="仕入れを追加">仕入</button>
@@ -1182,7 +1189,7 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
 }
 
 function getIngredientItemLabel(item) {
-  return `${item.name} / ${item.unit} / ${yen.format(Number(item.unitPrice))}`;
+  return `${item.name} / ${item.unit} / ${unitPriceYen.format(Number(item.unitPrice))}`;
 }
 
 function getIngredientSearchValue(itemId) {
