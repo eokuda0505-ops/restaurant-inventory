@@ -1053,8 +1053,9 @@ function compareCostingSortOrder(a, b) {
 function calculateCosting(costing) {
   const lines = costing.ingredients.map((ingredient) => {
     const item = items.find((entry) => entry.id === ingredient.itemId);
+    const enteredUnitPrice = Number(ingredient.unitPrice) || 0;
     const itemCostingPrice = getItemCostingUnitPrice(item);
-    const unitPrice = itemCostingPrice > 0 ? itemCostingPrice : Number(ingredient.unitPrice) > 0 ? Number(ingredient.unitPrice) : 0;
+    const unitPrice = enteredUnitPrice > 0 ? enteredUnitPrice : itemCostingPrice;
     const cost = unitPrice > 0 ? Number(ingredient.quantity) * unitPrice : Number(ingredient.cost) || 0;
     return { ...ingredient, item, unitPrice, cost };
   });
@@ -1304,7 +1305,7 @@ function updateIngredientRowTotal(row) {
   const enteredUnitPrice = Number(row.querySelector(".ingredient-unit-price").value) || 0;
   const item = items.find((entry) => entry.id === row.querySelector(".ingredient-item").value);
   const itemCostingPrice = getItemCostingUnitPrice(item);
-  const unitPrice = itemCostingPrice > 0 ? itemCostingPrice : enteredUnitPrice;
+  const unitPrice = enteredUnitPrice > 0 ? enteredUnitPrice : itemCostingPrice;
   const total = quantity * unitPrice;
   row.querySelector(".ingredient-row-total strong").textContent = yen.format(total);
 }
