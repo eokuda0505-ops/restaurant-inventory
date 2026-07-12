@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>THE PORT 冷蔵庫チェックQR</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #18211d;
+      background: #f7f8f5;
+    }
+
+    main {
+      width: min(900px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 20px 0;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.45rem;
+    }
+
+    p {
+      margin: 6px 0 0;
+      color: #617067;
+      font-size: 0.82rem;
+    }
+
+    button {
+      min-height: 42px;
+      border: 0;
+      border-radius: 6px;
+      padding: 0 16px;
+      background: #19756b;
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 800;
+    }
+
+    .qr-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .qr-card {
+      display: grid;
+      gap: 10px;
+      place-items: center;
+      break-inside: avoid;
+      border: 1px solid #d9ded6;
+      border-radius: 8px;
+      padding: 10px;
+      background: #fff;
+    }
+
+    .qr-card h2 {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+
+    .qr-card img {
+      width: 132px;
+      height: 132px;
+    }
+
+    .qr-card code {
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      color: #617067;
+      font-size: 0.54rem;
+      line-height: 1.35;
+      text-align: center;
+    }
+
+    @page {
+      size: A4 portrait;
+      margin: 8mm;
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      main {
+        width: 194mm;
+        padding: 0;
+      }
+
+      header {
+        margin-bottom: 4mm;
+      }
+
+      h1 {
+        font-size: 13pt;
+      }
+
+      button,
+      header p {
+        display: none;
+      }
+
+      .qr-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4mm;
+      }
+
+      .qr-card {
+        box-shadow: none;
+        min-height: 62mm;
+        padding: 4mm;
+      }
+
+      .qr-card h2 {
+        font-size: 12pt;
+      }
+
+      .qr-card img {
+        width: 34mm;
+        height: 34mm;
+      }
+
+      .qr-card code {
+        font-size: 5.5pt;
+        line-height: 1.2;
+      }
+    }
+
+    @media (max-width: 760px) {
+      header {
+        display: grid;
+      }
+
+      .qr-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>THE PORT 冷蔵庫チェックQR</h1>
+        <p>各扉に貼るQRコードです。読み込むと、その保管場所のチェック画面を開きます。</p>
+      </div>
+      <button type="button" onclick="window.print()">印刷</button>
+    </header>
+
+    <section class="qr-grid" id="qrGrid" aria-label="保管場所QRコード一覧"></section>
+  </main>
+
+  <script>
+    const baseUrl = "https://eokuda0505-ops.github.io/restaurant-inventory/";
+    const locations = [
+      "冷蔵庫１",
+      "冷蔵庫２",
+      "冷蔵庫３",
+      "冷蔵庫４",
+      "冷凍庫１",
+      "冷凍庫２",
+      "冷凍庫３",
+      "冷凍庫４",
+      "冷凍庫５",
+      "冷凍庫６",
+      "ワイン冷蔵",
+      "ドリンク冷蔵"
+    ];
+
+    const grid = document.querySelector("#qrGrid");
+
+    locations.forEach((location) => {
+      const url = new URL(baseUrl);
+      url.searchParams.set("view", "check");
+      url.searchParams.set("location", location);
+
+      const card = document.createElement("article");
+      card.className = "qr-card";
+      card.innerHTML = `
+        <h2>${location}</h2>
+        <img alt="${location} QRコード" src="${buildQrImageUrl(url.toString())}">
+        <code>${url.toString()}</code>
+      `;
+      grid.append(card);
+    });
+
+    function buildQrImageUrl(url) {
+      const qrUrl = new URL("https://api.qrserver.com/v1/create-qr-code/");
+      qrUrl.searchParams.set("size", "240x240");
+      qrUrl.searchParams.set("margin", "10");
+      qrUrl.searchParams.set("data", url);
+      return qrUrl.toString();
+    }
+  </script>
+</body>
+</html>
