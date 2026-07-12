@@ -253,7 +253,7 @@ function normalizeItem(item) {
     sku: item.sku ?? "",
     category: categoryOptions.includes(item.category) ? item.category : "野菜",
     supplier: item.supplier ?? "",
-    location: item.location ?? "",
+    location: normalizeLocation(item.location),
     unit: normalizeUnit(item.unit),
     stock: Number(item.stock) || 0,
     idealWeekdayStock: Number(item.idealWeekdayStock) || 0,
@@ -356,6 +356,26 @@ function cleanNote(note) {
   return String(note ?? "")
     .replace(/\s*\/?\s*シート[:：].*$/u, "")
     .trim();
+}
+
+function normalizeLocation(location) {
+  const cleaned = String(location ?? "").trim();
+  const locationMap = {
+    "冷凍１": "冷凍庫１",
+    "冷凍1": "冷凍庫１",
+    "冷凍２": "冷凍庫２",
+    "冷凍2": "冷凍庫２",
+    "冷凍庫1": "冷凍庫１",
+    "冷凍庫2": "冷凍庫２",
+    "冷蔵1": "冷蔵庫１",
+    "冷蔵１": "冷蔵庫１",
+    "冷蔵2": "冷蔵庫２",
+    "冷蔵２": "冷蔵庫２",
+    "冷蔵庫1": "冷蔵庫１",
+    "冷蔵庫2": "冷蔵庫２"
+  };
+
+  return locationMap[cleaned] ?? cleaned;
 }
 
 function normalizeUnit(unit) {
@@ -697,7 +717,7 @@ function renderCheckLocations() {
 }
 
 function getStorageLocations() {
-  const customLocations = [...new Set(items.map((item) => item.location).filter(Boolean))]
+  const customLocations = [...new Set(items.map((item) => normalizeLocation(item.location)).filter(Boolean))]
     .filter((location) => !storageLocationOptions.includes(location))
     .sort((a, b) => a.localeCompare(b, "ja"));
   return [...storageLocationOptions, ...customLocations];
@@ -1099,6 +1119,7 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
         <option value="枚">枚</option>
         <option value="g">g</option>
         <option value="人前">人前</option>
+        <option value="食分">食分</option>
       </select>
     </label>
     <label>
@@ -1148,7 +1169,7 @@ function setIngredientUnit(select, unit) {
 }
 
 function normalizeCostingUnit(unit) {
-  if (unit === "g" || unit === "枚" || unit === "人前") return unit;
+  if (unit === "g" || unit === "枚" || unit === "人前" || unit === "食分") return unit;
   if (["本", "個", "玉", "pac", "缶", "ケース", "束"].includes(unit)) return "枚";
   return "g";
 }
