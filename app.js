@@ -2,6 +2,7 @@ const STORAGE_KEY = "restaurant-inventory-items-v3";
 const HISTORY_KEY = "restaurant-inventory-history-v3";
 const SUPPLIER_KEY = "restaurant-inventory-suppliers-v1";
 const COSTINGS_KEY = "restaurant-inventory-costings-v1";
+const CHECK_URL_MANAGER_EMAIL = "okuda@anothertable.co.jp";
 
 const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類", "仕込み品"];
 const costingCategoryOptions = ["FOOD", "DESERT", "DRINK"];
@@ -41,6 +42,7 @@ const quantityFormat = new Intl.NumberFormat("ja-JP", {
 
 const els = {
   appTitle: document.querySelector("#appTitle"),
+  summaryGrid: document.querySelector("#summaryGrid"),
   totalItems: document.querySelector("#totalItems"),
   totalStock: document.querySelector("#totalStock"),
   lowStock: document.querySelector("#lowStock"),
@@ -157,6 +159,7 @@ function updateAuthView() {
   els.loginButton.hidden = loggedIn;
   els.logoutButton.hidden = !loggedIn;
   setAuthStatus(loggedIn ? currentUser.email : "未ログイン");
+  updateCheckUrlPermission();
   updateSyncTimer();
 }
 
@@ -714,6 +717,7 @@ function renderCheckLocations() {
 
   els.checkLocationFilter.value = locations.includes(current) ? current : "";
   updateCheckUrlPreview();
+  updateCheckUrlPermission();
 }
 
 function getStorageLocations() {
@@ -787,6 +791,17 @@ function updateCheckUrlPreview() {
   els.checkUrlPreview.textContent = buildCheckUrl(location);
 }
 
+function canManageCheckUrls() {
+  return currentUser?.email === CHECK_URL_MANAGER_EMAIL;
+}
+
+function updateCheckUrlPermission() {
+  const canManage = canManageCheckUrls();
+  els.copyCheckUrl.hidden = !canManage;
+  els.checkUrlPreview.hidden = !canManage;
+  els.checkLocationLinks.hidden = true;
+}
+
 function updateCheckUrlState() {
   updateCheckUrlPreview();
   const url = buildCheckUrl(els.checkLocationFilter.value);
@@ -794,6 +809,11 @@ function updateCheckUrlState() {
 }
 
 async function copyCheckUrl() {
+  if (!canManageCheckUrls()) {
+    alert("このURLコピー機能は管理者のみ利用できます。");
+    return;
+  }
+
   const url = buildCheckUrl(els.checkLocationFilter.value);
   try {
     await navigator.clipboard.writeText(url);
@@ -825,6 +845,7 @@ function switchView(view) {
   };
   els.appTitle.textContent = titles[view] ?? titles.inventory;
   document.title = titles[view] ?? titles.inventory;
+  els.summaryGrid.hidden = view === "check";
 }
 
 function renderTable(visibleItems) {
