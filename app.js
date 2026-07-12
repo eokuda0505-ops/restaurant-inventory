@@ -1151,6 +1151,8 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
       <select class="ingredient-unit">
         <option value="枚">枚</option>
         <option value="g">g</option>
+        <option value="玉">玉</option>
+        <option value="個">個</option>
         <option value="人前">人前</option>
         <option value="食分">食分</option>
       </select>
@@ -1202,8 +1204,8 @@ function setIngredientUnit(select, unit) {
 }
 
 function normalizeCostingUnit(unit) {
-  if (unit === "g" || unit === "枚" || unit === "人前" || unit === "食分") return unit;
-  if (["本", "個", "玉", "pac", "缶", "ケース", "束"].includes(unit)) return "枚";
+  if (unit === "g" || unit === "枚" || unit === "玉" || unit === "個" || unit === "人前" || unit === "食分") return unit;
+  if (["本", "pac", "缶", "ケース", "束"].includes(unit)) return "枚";
   return "g";
 }
 
