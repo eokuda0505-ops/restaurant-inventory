@@ -543,7 +543,7 @@ function toDbItem(item, includeGramPrice = true) {
     unit_price: normalized.unitPrice,
     note: normalized.note
   };
-  if (includeGramPrice) row.gram_price = normalized.gramPrice;
+  if (includeGramPrice) row.gram_price = Number(normalized.gramPrice) || 0;
   return row;
 }
 
