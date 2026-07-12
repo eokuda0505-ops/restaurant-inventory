@@ -5,7 +5,7 @@ const COSTINGS_KEY = "restaurant-inventory-costings-v1";
 const CHECK_URL_MANAGER_EMAIL = "okuda@anothertable.co.jp";
 
 const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類", "仕込み品"];
-const costingCategoryOptions = ["FOOD", "DESERT", "DRINK"];
+const costingCategoryOptions = ["FOOD", "DESERT", "DRINK", "PREP"];
 const storageLocationOptions = [
   "冷蔵庫１",
   "冷蔵庫２",
@@ -900,38 +900,40 @@ function renderCostings() {
 
   visibleCostings.forEach((costing) => {
     const summary = calculateCosting(costing);
+    const isPrep = costing.category === "PREP";
     const article = document.createElement("article");
     article.className = "costing-card";
     article.innerHTML = `
       <div class="costing-card-header">
         <button class="costing-title-button" data-costing-action="toggle" data-id="${costing.id}" type="button" aria-expanded="false">
           <h3>${escapeHtml(costing.name)}</h3>
-          <span class="costing-category-badge">${escapeHtml(costing.category)}</span>
+          <span class="costing-category-badge">${escapeHtml(formatCostingCategory(costing.category))}</span>
           ${costing.note ? `<p>${escapeHtml(costing.note)}</p>` : ""}
         </button>
         <div class="row-actions">
           <button class="icon-button" data-costing-action="move-up" data-id="${costing.id}" title="上へ移動" aria-label="上へ移動">↑</button>
           <button class="icon-button" data-costing-action="move-down" data-id="${costing.id}" title="下へ移動" aria-label="下へ移動">↓</button>
+          ${isPrep ? `<button class="icon-button" data-costing-action="sync-item" data-id="${costing.id}" title="在庫へ反映" aria-label="在庫へ反映">↻</button>` : ""}
           <button class="icon-button" data-costing-action="edit" data-id="${costing.id}" title="編集" aria-label="編集">✎</button>
           <button class="icon-button" data-costing-action="delete" data-id="${costing.id}" title="削除" aria-label="削除">×</button>
         </div>
       </div>
       <div class="costing-metrics">
         <div>
-          <span>1食原価</span>
+          <span>${isPrep ? "g単価" : "1食原価"}</span>
           <strong>${yen.format(summary.costPerServing)}</strong>
         </div>
         <div>
-          <span>販売価格</span>
-          <strong>${costing.salePrice > 0 ? yen.format(costing.salePrice) : "-"}</strong>
+          <span>${isPrep ? "仕上がり量" : "販売価格"}</span>
+          <strong>${isPrep ? `${formatQuantity(costing.yieldCount)}g` : costing.salePrice > 0 ? yen.format(costing.salePrice) : "-"}</strong>
         </div>
-        <div class="${summary.rate >= 35 ? "high-rate" : ""}">
-          <span>原価率</span>
-          <strong>${formatRate(summary.rate)}</strong>
+        <div class="${!isPrep && summary.rate >= 35 ? "high-rate" : ""}">
+          <span>${isPrep ? "総原価" : "原価率"}</span>
+          <strong>${isPrep ? yen.format(summary.totalCost) : formatRate(summary.rate)}</strong>
         </div>
         <div>
-          <span>粗利</span>
-          <strong>${costing.salePrice > 0 ? yen.format(costing.salePrice - summary.costPerServing) : "-"}</strong>
+          <span>${isPrep ? "在庫反映" : "粗利"}</span>
+          <strong>${isPrep ? "仕込み品" : costing.salePrice > 0 ? yen.format(costing.salePrice - summary.costPerServing) : "-"}</strong>
         </div>
       </div>
       <div class="ingredient-list" hidden>
@@ -940,6 +942,16 @@ function renderCostings() {
     `;
     els.costingGrid.append(article);
   });
+}
+
+function formatCostingCategory(category) {
+  const labels = {
+    FOOD: "FOOD",
+    DESERT: "DESERT",
+    DRINK: "DRINK",
+    PREP: "仕込み品"
+  };
+  return labels[category] ?? category;
 }
 
 function renderIngredientLine(line) {
@@ -1258,7 +1270,7 @@ function updateCostingPreview() {
   });
   const summary = calculateCosting(draft);
   els.costingPreviewCost.textContent = yen.format(summary.costPerServing);
-  els.costingPreviewRate.textContent = formatRate(summary.rate);
+  els.costingPreviewRate.textContent = draft.category === "PREP" ? `${yen.format(summary.totalCost)} / ${formatQuantity(draft.yieldCount)}g` : formatRate(summary.rate);
 }
 
 function handleCostingSubmit(event) {
@@ -1320,6 +1332,50 @@ function moveCosting(id, direction) {
   });
   saveCostings();
   renderCostings();
+}
+
+function syncPrepCostingToInventory(id) {
+  const costing = costings.find((entry) => entry.id === id);
+  if (!costing) return;
+
+  if (costing.category !== "PREP") {
+    alert("仕込み品カテゴリのみ在庫へ反映できます。");
+    return;
+  }
+
+  const summary = calculateCosting(costing);
+  if (!costing.name || summary.costPerServing <= 0) {
+    alert("仕込み品名、材料、仕上がり量を確認してください。");
+    return;
+  }
+
+  const existing = items.find((item) => item.name === costing.name && item.category === "仕込み品");
+  const inventoryItem = normalizeItem({
+    ...(existing ?? {}),
+    id: existing?.id ?? `prep-${costing.id}`,
+    name: costing.name,
+    sku: existing?.sku || `PREP-${costing.name}`,
+    category: "仕込み品",
+    supplier: existing?.supplier ?? "自家製",
+    location: existing?.location ?? "",
+    unit: "g",
+    stock: existing?.stock ?? 0,
+    idealWeekdayStock: existing?.idealWeekdayStock ?? 0,
+    idealWeekendStock: existing?.idealWeekendStock ?? 0,
+    reorderPoint: existing?.reorderPoint ?? 0,
+    unitPrice: Number(summary.costPerServing.toFixed(4)),
+    note: `仕込み品原価から反映 / 仕上がり量: ${formatQuantity(costing.yieldCount)}g / 総原価: ${yen.format(summary.totalCost)}`
+  });
+
+  if (existing) {
+    items = items.map((item) => (item.id === existing.id ? inventoryItem : item));
+  } else {
+    items.push(inventoryItem);
+  }
+
+  saveItems();
+  render();
+  alert(`${costing.name}を在庫マスターへ反映しました。`);
 }
 
 function applyCostingSortOrder() {
@@ -1465,16 +1521,18 @@ function exportCsv() {
 
 function exportCostingCsv() {
   const rows = [
-    ["メニュー名", "販売価格", "仕込み単位", "1食原価", "原価率", "粗利", "材料", "メモ"],
+    ["メニュー名", "カテゴリー", "販売価格", "仕込み単位/仕上がり量g", "1食原価/g単価", "原価率", "粗利/総原価", "材料", "メモ"],
     ...costings.map((costing) => {
       const summary = calculateCosting(costing);
+      const isPrep = costing.category === "PREP";
       return [
         costing.name,
+        formatCostingCategory(costing.category),
         costing.salePrice,
         costing.yieldCount,
         Math.round(summary.costPerServing),
-        formatRate(summary.rate),
-        costing.salePrice > 0 ? Math.round(costing.salePrice - summary.costPerServing) : "",
+        isPrep ? "" : formatRate(summary.rate),
+        isPrep ? Math.round(summary.totalCost) : costing.salePrice > 0 ? Math.round(costing.salePrice - summary.costPerServing) : "",
         summary.lines.map((line) => `${line.item?.name ?? "削除済み"} ${formatQuantity(line.quantity)}${line.item?.unit ?? ""}`).join(" / "),
         costing.note
       ];
@@ -1712,6 +1770,7 @@ els.costingGrid.addEventListener("click", (event) => {
   if (costingAction === "toggle") toggleCostingDetails(button);
   if (costingAction === "move-up") moveCosting(id, "up");
   if (costingAction === "move-down") moveCosting(id, "down");
+  if (costingAction === "sync-item") syncPrepCostingToInventory(id);
   if (costingAction === "edit" && costing) openCostingForm(costing);
   if (costingAction === "delete") deleteCosting(id);
 });

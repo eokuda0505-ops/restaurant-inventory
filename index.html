@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>THE PORT 在庫管理</title>
-  <link rel="stylesheet" href="styles.css?v=20260712-check-permissions">
+  <link rel="stylesheet" href="styles.css?v=20260712-prep-costing">
 </head>
 <body>
   <main class="app-shell">
@@ -186,6 +186,7 @@
             <option value="FOOD">FOOD</option>
             <option value="DESERT">DESERT</option>
             <option value="DRINK">DRINK</option>
+            <option value="PREP">仕込み品</option>
           </select>
         </label>
         <label>
@@ -353,15 +354,16 @@
             <option value="FOOD">FOOD</option>
             <option value="DESERT">DESERT</option>
             <option value="DRINK">DRINK</option>
+            <option value="PREP">仕込み品</option>
           </select>
         </label>
         <label>
           販売価格
-          <input id="costingSalePrice" type="number" min="0" step="1" placeholder="税込/税抜は店舗ルールで統一">
+          <input id="costingSalePrice" type="number" min="0" step="1" placeholder="仕込み品は空欄でOK">
         </label>
         <label>
-          仕込み単位
-          <input id="costingYield" type="number" min="1" step="1" required value="1">
+          仕込み単位 / 仕上がり量g
+          <input id="costingYield" type="number" min="1" step="0.01" required value="1">
         </label>
         <label>
           メモ
@@ -379,7 +381,7 @@
       </div>
 
       <div class="costing-preview">
-        <span>1食あたり原価</span>
+        <span>1食/g単価</span>
         <strong id="costingPreviewCost">¥0</strong>
         <span>原価率</span>
         <strong id="costingPreviewRate">-</strong>
@@ -394,6 +396,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
-  <script src="app.js?v=20260712-check-permissions"></script>
+  <script src="app.js?v=20260712-prep-costing"></script>
 </body>
 </html>
