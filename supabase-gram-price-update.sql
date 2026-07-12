@@ -1,4 +1,5 @@
 -- 商品マスターに g単価 を追加・修復します。
+-- 古い画面キャッシュから空欄が送られても保存エラーにならないようにします。
 -- Supabase SQL Editorで一度だけ実行してください。
 
 alter table public.inventory_items
@@ -17,4 +18,4 @@ where gram_price = 0
   and note ~ 'g単価[:：]\s*[0-9]+';
 
 alter table public.inventory_items
-alter column gram_price set not null;
+alter column gram_price drop not null;
