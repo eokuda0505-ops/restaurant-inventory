@@ -50,6 +50,13 @@ const gramPriceYen = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 4
 });
 
+const costingGramPriceYen = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+});
+
 const quantityFormat = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 2
 });
@@ -972,7 +979,7 @@ function renderCostings() {
       <div class="costing-metrics">
         <div>
           <span>${isPrep ? "g単価" : "1食原価"}</span>
-          <strong>${yen.format(summary.costPerServing)}</strong>
+          <strong>${formatCostingCost(summary.costPerServing, isPrep)}</strong>
         </div>
         <div>
           <span>${isPrep ? "仕上がり量" : "販売価格"}</span>
@@ -1055,7 +1062,7 @@ function calculateCosting(costing) {
     const item = items.find((entry) => entry.id === ingredient.itemId);
     const enteredUnitPrice = Number(ingredient.unitPrice) || 0;
     const itemCostingPrice = getItemCostingUnitPrice(item);
-    const unitPrice = enteredUnitPrice > 0 ? enteredUnitPrice : itemCostingPrice;
+    const unitPrice = itemCostingPrice > 0 ? itemCostingPrice : enteredUnitPrice;
     const cost = unitPrice > 0 ? Number(ingredient.quantity) * unitPrice : Number(ingredient.cost) || 0;
     return { ...ingredient, item, unitPrice, cost };
   });
@@ -1074,6 +1081,10 @@ function getItemCostingUnitPrice(item) {
 function formatRate(value) {
   if (!Number.isFinite(value) || value <= 0) return "-";
   return `${quantityFormat.format(value)}%`;
+}
+
+function formatCostingCost(value, isPrep = false) {
+  return isPrep ? costingGramPriceYen.format(Number(value) || 0) : yen.format(Number(value) || 0);
 }
 
 function formatQuantity(value) {
@@ -1217,7 +1228,7 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
       </select>
     </label>
     <label>
-      単価
+      g単価
       <input class="ingredient-unit-price" type="number" min="0" step="0.0001" placeholder="在庫未紐づけ時">
     </label>
     <div class="ingredient-row-total" aria-live="polite">
@@ -1236,6 +1247,7 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
   setIngredientUnit(row.querySelector(".ingredient-unit"), ingredient.unit ?? "g");
   row.querySelector(".ingredient-cost").value = ingredient.cost || "";
   row.querySelector(".ingredient-memo").value = ingredient.memo ?? "";
+  refreshIngredientRowFromLinkedItem(row, { overwriteName: false });
   els.ingredientRows.append(row);
   updateIngredientRowTotal(row);
 }
@@ -1244,7 +1256,7 @@ function getIngredientItemLabel(item) {
   const gramPrice = Number(item.gramPrice) || 0;
   const priceLabel = gramPrice > 0
     ? `g単価 ${gramPriceYen.format(gramPrice)}`
-    : `単価 ${unitPriceYen.format(Number(item.unitPrice))}`;
+    : `g単価 ${unitPriceYen.format(Number(item.unitPrice))}`;
   return `${item.name} / ${item.unit} / ${priceLabel}`;
 }
 
@@ -1273,10 +1285,16 @@ function normalizeCostingUnit(unit) {
 }
 
 function syncIngredientRowFromItem(row) {
+  refreshIngredientRowFromLinkedItem(row, { overwriteName: true });
+}
+
+function refreshIngredientRowFromLinkedItem(row, { overwriteName = true } = {}) {
   const item = items.find((entry) => entry.id === row.querySelector(".ingredient-item").value);
   if (!item) return;
 
-  row.querySelector(".ingredient-name").value = item.name;
+  if (overwriteName || !row.querySelector(".ingredient-name").value.trim()) {
+    row.querySelector(".ingredient-name").value = item.name;
+  }
   const unitPriceInput = row.querySelector(".ingredient-unit-price");
   const costingUnitPrice = getItemCostingUnitPrice(item);
   unitPriceInput.value = costingUnitPrice || "";
@@ -1336,7 +1354,7 @@ function updateCostingPreview() {
     ingredients: getCostingFormIngredients()
   });
   const summary = calculateCosting(draft);
-  els.costingPreviewCost.textContent = yen.format(summary.costPerServing);
+  els.costingPreviewCost.textContent = formatCostingCost(summary.costPerServing, draft.category === "PREP");
   els.costingPreviewRate.textContent = draft.category === "PREP" ? `${yen.format(summary.totalCost)} / ${formatQuantity(draft.yieldCount)}g` : formatRate(summary.rate);
 }
 
