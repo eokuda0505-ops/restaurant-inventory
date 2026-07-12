@@ -120,6 +120,7 @@
                 <th>適正在庫</th>
                 <th>発注点</th>
                 <th>単価</th>
+                <th>g単価</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -301,6 +302,11 @@
           <span class="form-help">小数点2桁まで入力できます。</span>
         </label>
         <label>
+          g単価
+          <input id="gramPrice" type="text" inputmode="decimal" pattern="^[0-9０-９]+([.．][0-9０-９]{1,4})?$" placeholder="例: 1.1433">
+          <span class="form-help">原価計算ではこちらを優先します。</span>
+        </label>
+        <label>
           メモ
           <input id="note" maxlength="120">
         </label>
@@ -397,6 +403,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
-  <script src="app.js?v=20260712-unit-price-text-decimal"></script>
+  <script src="app.js?v=20260712-gram-price"></script>
 </body>
 </html>

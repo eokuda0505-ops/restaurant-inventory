@@ -43,6 +43,13 @@ const unitPriceYen = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 2
 });
 
+const gramPriceYen = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 4
+});
+
 const quantityFormat = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 2
 });
@@ -270,6 +277,7 @@ function normalizeItem(item) {
     idealWeekendStock: Number(item.idealWeekendStock) || 0,
     reorderPoint: Number(item.reorderPoint) || 0,
     unitPrice: roundToTwoDecimals(item.unitPrice),
+    gramPrice: roundToFourDecimals(item.gramPrice) || inferGramPriceFromNote(item.note),
     note: cleanNote(item.note)
   };
 }
@@ -286,6 +294,15 @@ function parseDecimalValue(value) {
 
 function roundToTwoDecimals(value) {
   return Math.round(parseDecimalValue(value) * 100) / 100;
+}
+
+function roundToFourDecimals(value) {
+  return Math.round(parseDecimalValue(value) * 10000) / 10000;
+}
+
+function inferGramPriceFromNote(note) {
+  const match = String(note ?? "").match(/g単価[:：]\s*([0-9０-９]+(?:[.．][0-9０-９]+)?)/u);
+  return match ? roundToFourDecimals(match[1]) : 0;
 }
 
 async function loadCostings() {
@@ -442,6 +459,15 @@ async function saveItems() {
       .from("inventory_items")
       .upsert(items.map(toDbItem), { onConflict: "id" });
 
+    if (error?.code === "PGRST204" || error?.code === "42703") {
+      const { error: retryError } = await supabaseClient
+        .from("inventory_items")
+        .upsert(items.map((item) => toDbItem(item, false)), { onConflict: "id" });
+
+      if (retryError) alert(`在庫データの保存に失敗しました: ${retryError.message}`);
+      return;
+    }
+
     if (error) alert(`在庫データの保存に失敗しました: ${error.message}`);
   }
 }
@@ -495,13 +521,14 @@ function fromDbItem(row) {
     idealWeekendStock: row.ideal_weekend_stock,
     reorderPoint: row.reorder_point,
     unitPrice: row.unit_price,
+    gramPrice: row.gram_price,
     note: row.note
   };
 }
 
-function toDbItem(item) {
+function toDbItem(item, includeGramPrice = true) {
   const normalized = normalizeItem(item);
-  return {
+  const row = {
     id: normalized.id,
     name: normalized.name,
     sku: normalized.sku,
@@ -516,6 +543,8 @@ function toDbItem(item) {
     unit_price: normalized.unitPrice,
     note: normalized.note
   };
+  if (includeGramPrice) row.gram_price = normalized.gramPrice;
+  return row;
 }
 
 function fromDbMovement(row) {
@@ -900,6 +929,7 @@ function renderTable(visibleItems) {
       </td>
       <td>${formatQuantity(item.reorderPoint)} ${escapeHtml(item.unit)}</td>
       <td>${unitPriceYen.format(Number(item.unitPrice))}</td>
+      <td>${Number(item.gramPrice) > 0 ? gramPriceYen.format(Number(item.gramPrice)) : "-"}</td>
       <td>
         <div class="row-actions">
           <button class="action-button receive" data-action="receive" data-id="${item.id}" title="仕入れを追加">仕入</button>
@@ -1023,14 +1053,21 @@ function compareCostingSortOrder(a, b) {
 function calculateCosting(costing) {
   const lines = costing.ingredients.map((ingredient) => {
     const item = items.find((entry) => entry.id === ingredient.itemId);
-    const unitPrice = Number(ingredient.unitPrice) > 0 ? Number(ingredient.unitPrice) : Number(item?.unitPrice) || 0;
+    const itemCostingPrice = getItemCostingUnitPrice(item);
+    const unitPrice = itemCostingPrice > 0 ? itemCostingPrice : Number(ingredient.unitPrice) > 0 ? Number(ingredient.unitPrice) : 0;
     const cost = unitPrice > 0 ? Number(ingredient.quantity) * unitPrice : Number(ingredient.cost) || 0;
-    return { ...ingredient, item, cost };
+    return { ...ingredient, item, unitPrice, cost };
   });
   const totalCost = lines.reduce((sum, line) => sum + line.cost, 0);
   const costPerServing = totalCost / Math.max(1, Number(costing.yieldCount) || 1);
   const rate = Number(costing.salePrice) > 0 ? (costPerServing / Number(costing.salePrice)) * 100 : 0;
   return { lines, totalCost, costPerServing, rate };
+}
+
+function getItemCostingUnitPrice(item) {
+  if (!item) return 0;
+  const gramPrice = Number(item.gramPrice) || 0;
+  return gramPrice > 0 ? gramPrice : Number(item.unitPrice) || 0;
 }
 
 function formatRate(value) {
@@ -1180,7 +1217,7 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
     </label>
     <label>
       単価
-      <input class="ingredient-unit-price" type="number" min="0" step="0.01" placeholder="在庫未紐づけ時">
+      <input class="ingredient-unit-price" type="number" min="0" step="0.0001" placeholder="在庫未紐づけ時">
     </label>
     <div class="ingredient-row-total" aria-live="polite">
       <span>小計</span>
@@ -1203,7 +1240,11 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
 }
 
 function getIngredientItemLabel(item) {
-  return `${item.name} / ${item.unit} / ${unitPriceYen.format(Number(item.unitPrice))}`;
+  const gramPrice = Number(item.gramPrice) || 0;
+  const priceLabel = gramPrice > 0
+    ? `g単価 ${gramPriceYen.format(gramPrice)}`
+    : `単価 ${unitPriceYen.format(Number(item.unitPrice))}`;
+  return `${item.name} / ${item.unit} / ${priceLabel}`;
 }
 
 function getIngredientSearchValue(itemId) {
@@ -1236,8 +1277,9 @@ function syncIngredientRowFromItem(row) {
 
   row.querySelector(".ingredient-name").value = item.name;
   const unitPriceInput = row.querySelector(".ingredient-unit-price");
-  if (!Number(unitPriceInput.value)) unitPriceInput.value = Number(item.unitPrice) || "";
-  setIngredientUnit(row.querySelector(".ingredient-unit"), item.unit);
+  const costingUnitPrice = getItemCostingUnitPrice(item);
+  unitPriceInput.value = costingUnitPrice || "";
+  setIngredientUnit(row.querySelector(".ingredient-unit"), Number(item.gramPrice) > 0 ? "g" : item.unit);
   row.querySelector(".ingredient-cost").value = "";
   updateIngredientRowTotal(row);
 }
@@ -1261,7 +1303,8 @@ function updateIngredientRowTotal(row) {
   const quantity = Number(row.querySelector(".ingredient-quantity").value) || 0;
   const enteredUnitPrice = Number(row.querySelector(".ingredient-unit-price").value) || 0;
   const item = items.find((entry) => entry.id === row.querySelector(".ingredient-item").value);
-  const unitPrice = enteredUnitPrice > 0 ? enteredUnitPrice : Number(item?.unitPrice) || 0;
+  const itemCostingPrice = getItemCostingUnitPrice(item);
+  const unitPrice = itemCostingPrice > 0 ? itemCostingPrice : enteredUnitPrice;
   const total = quantity * unitPrice;
   row.querySelector(".ingredient-row-total strong").textContent = yen.format(total);
 }
@@ -1517,7 +1560,7 @@ async function deleteRemoteItem(id) {
 
 function exportCsv() {
   const rows = [
-    ["個別商品名", "管理番号", "カテゴリ", "業者名", "保管場所", "単位", "現在庫", "適正在庫 平日", "適正在庫 土日", "発注点", "単価", "メモ"],
+    ["個別商品名", "管理番号", "カテゴリ", "業者名", "保管場所", "単位", "現在庫", "適正在庫 平日", "適正在庫 土日", "発注点", "単価", "g単価", "メモ"],
     ...items.map((item) => [
       item.name,
       item.sku,
@@ -1530,6 +1573,7 @@ function exportCsv() {
       item.idealWeekendStock,
       item.reorderPoint,
       item.unitPrice,
+      item.gramPrice,
       item.note
     ])
   ];
@@ -1556,7 +1600,7 @@ function exportCostingCsv() {
         Math.round(summary.costPerServing),
         isPrep ? "" : formatRate(summary.rate),
         isPrep ? Math.round(summary.totalCost) : costing.salePrice > 0 ? Math.round(costing.salePrice - summary.costPerServing) : "",
-        summary.lines.map((line) => `${line.item?.name ?? "削除済み"} ${formatQuantity(line.quantity)}${line.item?.unit ?? ""}`).join(" / "),
+        summary.lines.map((line) => `${line.item?.name ?? line.name ?? "削除済み"} ${formatQuantity(line.quantity)}${line.unit || line.item?.unit || ""}`).join(" / "),
         costing.note
       ];
     })
@@ -1592,7 +1636,8 @@ function importCsv(file) {
       idealWeekendStock: row.length >= 12 ? row[8] : 0,
       reorderPoint: row.length >= 12 ? row[9] : row[7],
       unitPrice: row.length >= 12 ? row[10] : row[8],
-      note: row.length >= 12 ? row[11] || "" : row[9] || ""
+      gramPrice: row.length >= 13 ? row[11] : "",
+      note: row.length >= 13 ? row[12] || "" : row.length >= 12 ? row[11] || "" : row[9] || ""
     }));
 
     if (imported.length === 0) {

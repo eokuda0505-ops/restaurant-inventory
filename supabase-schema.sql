@@ -11,9 +11,13 @@ create table if not exists public.inventory_items (
   ideal_weekend_stock numeric not null default 0,
   reorder_point numeric not null default 0,
   unit_price numeric not null default 0,
+  gram_price numeric not null default 0,
   note text,
   updated_at timestamptz not null default now()
 );
+
+alter table public.inventory_items
+add column if not exists gram_price numeric not null default 0;
 
 create table if not exists public.inventory_movements (
   id uuid primary key default gen_random_uuid(),
