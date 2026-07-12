@@ -269,9 +269,23 @@ function normalizeItem(item) {
     idealWeekdayStock: Number(item.idealWeekdayStock) || 0,
     idealWeekendStock: Number(item.idealWeekendStock) || 0,
     reorderPoint: Number(item.reorderPoint) || 0,
-    unitPrice: Number(item.unitPrice) || 0,
+    unitPrice: roundToTwoDecimals(item.unitPrice),
     note: cleanNote(item.note)
   };
+}
+
+function parseDecimalValue(value) {
+  const normalized = String(value ?? "")
+    .trim()
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace("．", ".")
+    .replace(",", ".");
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function roundToTwoDecimals(value) {
+  return Math.round(parseDecimalValue(value) * 100) / 100;
 }
 
 async function loadCostings() {
