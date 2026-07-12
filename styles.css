@@ -231,7 +231,8 @@ h2 {
   display: grid;
 }
 
-.costing-layout {
+.costing-layout,
+.check-layout {
   grid-template-columns: 270px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
@@ -239,7 +240,8 @@ h2 {
 
 .side-panel,
 .inventory-area,
-.costing-area {
+.costing-area,
+.check-area {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -306,6 +308,11 @@ button:focus-visible {
 }
 
 .costing-area {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.check-area {
   min-width: 0;
   overflow: hidden;
 }
@@ -460,6 +467,148 @@ td {
 .empty-state h3 {
   color: var(--text);
   margin-bottom: 6px;
+}
+
+.qr-url-box {
+  min-height: 42px;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.location-link-list {
+  display: grid;
+  gap: 6px;
+}
+
+.location-link-list a {
+  display: block;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--accent);
+  font-size: 0.86rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.location-link-list a:hover,
+.location-link-list a:focus-visible {
+  border-color: var(--accent);
+  background: var(--surface-soft);
+}
+
+.check-grid {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.check-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(210px, auto);
+  gap: 14px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fff;
+}
+
+.check-card-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.check-card-main span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.check-name-button {
+  appearance: none;
+  width: fit-content;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 900;
+  text-align: left;
+}
+
+.check-name-button:hover,
+.check-name-button:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.check-stock {
+  display: grid;
+  grid-template-columns: 56px minmax(86px, auto) 56px;
+  gap: 8px;
+  align-items: center;
+}
+
+.check-stock strong {
+  display: grid;
+  place-items: center;
+  min-height: 56px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.check-stock small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.check-step-button {
+  min-height: 56px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.check-step-button.decrease {
+  background: #fff3e6;
+  color: #9b4d17;
+  border-color: #efc7a7;
+}
+
+.check-step-button.increase {
+  background: #e8f5ef;
+  color: #106c4c;
+  border-color: #b7ddcc;
+}
+
+.check-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+
+.check-card-actions .ghost-button {
+  min-height: 40px;
+  padding: 0 8px;
+  white-space: nowrap;
 }
 
 .costing-grid {
@@ -691,7 +840,8 @@ dialog::backdrop {
 @media (max-width: 850px) {
   .topbar,
   .workspace,
-  .costing-layout {
+  .costing-layout,
+  .check-layout {
     grid-template-columns: 1fr;
   }
 
@@ -713,7 +863,8 @@ dialog::backdrop {
   }
 
   .ingredient-row,
-  .ingredient-line {
+  .ingredient-line,
+  .check-card {
     grid-template-columns: 1fr;
   }
 
@@ -756,5 +907,13 @@ dialog::backdrop {
 
   .inventory-toolbar select {
     max-width: none;
+  }
+
+  .check-stock {
+    grid-template-columns: 1fr minmax(84px, 1fr) 1fr;
+  }
+
+  .check-card-actions {
+    grid-template-columns: 1fr;
   }
 }

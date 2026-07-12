@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>THE PORT 在庫管理</title>
-  <link rel="stylesheet" href="styles.css?v=20260710-search-reorder">
+  <link rel="stylesheet" href="styles.css?v=20260712-location-options">
 </head>
 <body>
   <main class="app-shell">
@@ -37,6 +37,7 @@
 
     <nav class="view-tabs" aria-label="表示切り替え">
       <button class="tab-button active" data-view="inventory" type="button">在庫管理</button>
+      <button class="tab-button" data-view="check" type="button">冷蔵庫チェック</button>
       <button class="tab-button" data-view="costing" type="button">原価計算</button>
     </nav>
 
@@ -132,6 +133,42 @@
       </section>
     </section>
 
+    <section class="check-layout app-view" data-view-panel="check">
+      <aside class="side-panel">
+        <div class="panel-header">
+          <h2>チェック場所</h2>
+          <button class="ghost-button" id="clearCheckFilters" type="button">解除</button>
+        </div>
+        <label>
+          保管場所
+          <select id="checkLocationFilter">
+            <option value="">すべて</option>
+          </select>
+        </label>
+        <label>
+          検索
+          <input id="checkSearchInput" type="search" placeholder="商品名・メモ">
+        </label>
+        <button class="primary-button full-button" id="copyCheckUrl" type="button">この場所のURLをコピー</button>
+        <div class="qr-url-box" id="checkUrlPreview"></div>
+        <div class="location-link-list" id="checkLocationLinks"></div>
+      </aside>
+
+      <section class="check-area">
+        <div class="inventory-toolbar">
+          <div>
+            <h2 id="checkLocationTitle">冷蔵庫チェック</h2>
+            <p id="checkResultCount">0件を表示中</p>
+          </div>
+        </div>
+        <div class="check-grid" id="checkGrid"></div>
+        <div class="empty-state" id="checkEmptyState" hidden>
+          <h3>チェック対象がありません</h3>
+          <p>商品編集で「保管場所」を入れると、この画面に表示されます。</p>
+        </div>
+      </section>
+    </section>
+
     <section class="costing-layout app-view" data-view-panel="costing">
       <aside class="side-panel">
         <div class="panel-header">
@@ -213,6 +250,7 @@
             <option value="資材">資材</option>
             <option value="乳製品、チーズ">乳製品、チーズ</option>
             <option value="酒類">酒類</option>
+            <option value="仕込み品">仕込み品</option>
           </select>
         </label>
         <label>
@@ -222,7 +260,8 @@
         </label>
         <label>
           保管場所
-          <input id="location" maxlength="60" placeholder="例: 冷蔵庫A、冷凍庫、乾物棚">
+          <input id="location" list="locationOptions" maxlength="60" placeholder="例: 冷蔵庫１、冷凍庫３">
+          <datalist id="locationOptions"></datalist>
         </label>
         <label>
           単位
@@ -354,6 +393,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
-  <script src="app.js?v=20260710-search-reorder"></script>
+  <script src="app.js?v=20260712-location-options"></script>
 </body>
 </html>

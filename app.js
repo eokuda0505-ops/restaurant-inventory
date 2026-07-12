@@ -3,8 +3,22 @@ const HISTORY_KEY = "restaurant-inventory-history-v3";
 const SUPPLIER_KEY = "restaurant-inventory-suppliers-v1";
 const COSTINGS_KEY = "restaurant-inventory-costings-v1";
 
-const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類"];
+const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類", "仕込み品"];
 const costingCategoryOptions = ["FOOD", "DESERT", "DRINK"];
+const storageLocationOptions = [
+  "冷蔵庫１",
+  "冷蔵庫２",
+  "冷蔵庫３",
+  "冷蔵庫４",
+  "冷凍庫１",
+  "冷凍庫２",
+  "冷凍庫３",
+  "冷凍庫４",
+  "冷凍庫５",
+  "冷凍庫６",
+  "ワイン冷蔵",
+  "ドリンク冷蔵"
+];
 
 let items = [];
 let history = [];
@@ -38,6 +52,7 @@ const els = {
   categoryFilter: document.querySelector("#categoryFilter"),
   supplierFilter: document.querySelector("#supplierFilter"),
   supplierOptions: document.querySelector("#supplierOptions"),
+  locationOptions: document.querySelector("#locationOptions"),
   statusFilter: document.querySelector("#statusFilter"),
   sortSelect: document.querySelector("#sortSelect"),
   clearFilters: document.querySelector("#clearFilters"),
@@ -67,6 +82,16 @@ const els = {
   authStatus: document.querySelector("#authStatus"),
   tabButtons: document.querySelectorAll(".tab-button"),
   viewPanels: document.querySelectorAll(".app-view"),
+  checkLocationFilter: document.querySelector("#checkLocationFilter"),
+  checkSearchInput: document.querySelector("#checkSearchInput"),
+  clearCheckFilters: document.querySelector("#clearCheckFilters"),
+  copyCheckUrl: document.querySelector("#copyCheckUrl"),
+  checkUrlPreview: document.querySelector("#checkUrlPreview"),
+  checkLocationLinks: document.querySelector("#checkLocationLinks"),
+  checkLocationTitle: document.querySelector("#checkLocationTitle"),
+  checkResultCount: document.querySelector("#checkResultCount"),
+  checkGrid: document.querySelector("#checkGrid"),
+  checkEmptyState: document.querySelector("#checkEmptyState"),
   costingSearchInput: document.querySelector("#costingSearchInput"),
   costingCategoryFilter: document.querySelector("#costingCategoryFilter"),
   costingStatusFilter: document.querySelector("#costingStatusFilter"),
@@ -507,7 +532,10 @@ function render() {
   renderSummary();
   renderCategoryFilter();
   renderSupplierFilter();
+  renderLocationOptions();
   renderTable(getVisibleItems());
+  renderCheckLocations();
+  renderCheckItems();
   renderCostings();
 }
 
@@ -563,6 +591,15 @@ function getSupplierOptions() {
   const saved = loadSavedSuppliers();
   return [...new Set([...items.map((item) => item.supplier).filter(Boolean), ...saved])]
     .sort((a, b) => a.localeCompare(b, "ja"));
+}
+
+function renderLocationOptions() {
+  els.locationOptions.innerHTML = "";
+  getStorageLocations().forEach((location) => {
+    const option = document.createElement("option");
+    option.value = location;
+    els.locationOptions.append(option);
+  });
 }
 
 function loadSavedSuppliers() {
@@ -635,6 +672,139 @@ function getVisibleItems() {
     }
     return a.name.localeCompare(b.name, "ja");
   });
+}
+
+function renderCheckLocations() {
+  const current = els.checkLocationFilter.value;
+  const locations = getStorageLocations();
+  els.checkLocationFilter.innerHTML = '<option value="">すべて</option>';
+  els.checkLocationLinks.innerHTML = "";
+
+  locations.forEach((location) => {
+    const option = document.createElement("option");
+    option.value = location;
+    option.textContent = location;
+    els.checkLocationFilter.append(option);
+
+    const link = document.createElement("a");
+    link.href = buildCheckUrl(location);
+    link.textContent = location;
+    els.checkLocationLinks.append(link);
+  });
+
+  els.checkLocationFilter.value = locations.includes(current) ? current : "";
+  updateCheckUrlPreview();
+}
+
+function getStorageLocations() {
+  const customLocations = [...new Set(items.map((item) => item.location).filter(Boolean))]
+    .filter((location) => !storageLocationOptions.includes(location))
+    .sort((a, b) => a.localeCompare(b, "ja"));
+  return [...storageLocationOptions, ...customLocations];
+}
+
+function getCheckItems() {
+  const location = els.checkLocationFilter.value;
+  const query = els.checkSearchInput.value.trim().toLowerCase();
+  return items
+    .filter((item) => {
+      const matchesLocation = !location || item.location === location;
+      const haystack = `${item.name} ${item.category} ${item.supplier} ${item.note}`.toLowerCase();
+      return matchesLocation && haystack.includes(query);
+    })
+    .sort((a, b) => {
+      if (a.location !== b.location) return (a.location || "未設定").localeCompare(b.location || "未設定", "ja");
+      return a.name.localeCompare(b.name, "ja");
+    });
+}
+
+function renderCheckItems() {
+  const visibleItems = getCheckItems();
+  const location = els.checkLocationFilter.value;
+  els.checkGrid.innerHTML = "";
+  els.checkLocationTitle.textContent = location ? `${location} チェック` : "冷蔵庫チェック";
+  els.checkResultCount.textContent = `${visibleItems.length}件を表示中`;
+  els.checkEmptyState.hidden = visibleItems.length !== 0;
+
+  visibleItems.forEach((item) => {
+    const article = document.createElement("article");
+    article.className = "check-card";
+    article.innerHTML = `
+      <div class="check-card-main">
+        <button class="check-name-button" data-check-action="edit" data-id="${item.id}" type="button">
+          ${escapeHtml(item.name)}
+        </button>
+        <span>${escapeHtml(item.location || "未設定")} / ${escapeHtml(item.category)}</span>
+      </div>
+      <div class="check-stock">
+        <button class="check-step-button decrease" data-check-action="decrease" data-id="${item.id}" type="button">-1</button>
+        <strong>${formatQuantity(item.stock)}<small>${escapeHtml(item.unit)}</small></strong>
+        <button class="check-step-button increase" data-check-action="increase" data-id="${item.id}" type="button">+1</button>
+      </div>
+      <div class="check-card-actions">
+        <button class="ghost-button" data-check-action="set" data-id="${item.id}" type="button">数を入力</button>
+        <button class="ghost-button" data-check-action="use" data-id="${item.id}" type="button">使用</button>
+        <button class="ghost-button" data-check-action="receive" data-id="${item.id}" type="button">納品</button>
+      </div>
+    `;
+    els.checkGrid.append(article);
+  });
+}
+
+function buildCheckUrl(location) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("view", "check");
+  if (location) {
+    url.searchParams.set("location", location);
+  } else {
+    url.searchParams.delete("location");
+  }
+  return url.toString();
+}
+
+function updateCheckUrlPreview() {
+  const location = els.checkLocationFilter.value;
+  els.checkUrlPreview.textContent = buildCheckUrl(location);
+}
+
+function updateCheckUrlState() {
+  updateCheckUrlPreview();
+  const url = buildCheckUrl(els.checkLocationFilter.value);
+  window.history.replaceState(null, "", url);
+}
+
+async function copyCheckUrl() {
+  const url = buildCheckUrl(els.checkLocationFilter.value);
+  try {
+    await navigator.clipboard.writeText(url);
+    alert("この場所のURLをコピーしました。QRコード作成時に使えます。");
+  } catch {
+    window.prompt("このURLをコピーしてください。", url);
+  }
+}
+
+function applyInitialViewFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get("view");
+  const location = params.get("location");
+  if (location) els.checkLocationFilter.value = location;
+  if (view === "check" || location) {
+    switchView("check");
+    renderCheckItems();
+    updateCheckUrlPreview();
+  }
+}
+
+function switchView(view) {
+  els.tabButtons.forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
+  els.viewPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === view));
+  const titles = {
+    inventory: "THE PORT 在庫管理",
+    check: "冷蔵庫チェック",
+    costing: "THE PORT原価"
+  };
+  els.appTitle.textContent = titles[view] ?? titles.inventory;
+  document.title = titles[view] ?? titles.inventory;
 }
 
 function renderTable(visibleItems) {
@@ -1164,6 +1334,47 @@ function handleMovementSubmit(event) {
   render();
 }
 
+function applyStockChange(id, delta, memo) {
+  const item = items.find((entry) => entry.id === id);
+  if (!item || !Number.isFinite(delta) || delta === 0) return;
+
+  const nextStock = Math.max(0, Number(item.stock) + delta);
+  const appliedQuantity = Math.abs(nextStock - Number(item.stock));
+  if (appliedQuantity === 0) return;
+
+  items = items.map((entry) => (entry.id === id ? { ...entry, stock: nextStock } : entry));
+  history.unshift({
+    id: crypto.randomUUID(),
+    itemId: id,
+    itemName: item.name,
+    type: delta > 0 ? "receive" : "use",
+    quantity: appliedQuantity,
+    unit: item.unit,
+    memo,
+    createdAt: new Date().toISOString()
+  });
+
+  saveItems();
+  saveHistory();
+  render();
+}
+
+function setCheckStock(id) {
+  const item = items.find((entry) => entry.id === id);
+  if (!item) return;
+
+  const value = window.prompt(`${item.name} の現在庫を入力してください。`, String(Number(item.stock) || 0));
+  if (value === null) return;
+  const nextStock = Number(value);
+  if (!Number.isFinite(nextStock) || nextStock < 0) {
+    alert("0以上の数字を入力してください。");
+    return;
+  }
+
+  const delta = nextStock - Number(item.stock);
+  applyStockChange(id, delta, "冷蔵庫チェックで在庫数を修正");
+}
+
 function deleteItem(id) {
   const item = items.find((entry) => entry.id === id);
   if (!item || !confirm(`${item.name}を削除しますか？`)) return;
@@ -1318,6 +1529,7 @@ els.addIngredientRow.addEventListener("click", () => {
   updateCostingPreview();
 });
 els.exportCostingCsv.addEventListener("click", exportCostingCsv);
+els.copyCheckUrl.addEventListener("click", copyCheckUrl);
 els.importCsv.addEventListener("change", (event) => {
   const [file] = event.target.files;
   if (file) importCsv(file);
@@ -1326,6 +1538,13 @@ els.importCsv.addEventListener("change", (event) => {
 
 [els.searchInput, els.categoryFilter, els.supplierFilter, els.statusFilter, els.sortSelect].forEach((element) => {
   element.addEventListener("input", render);
+});
+
+[els.checkLocationFilter, els.checkSearchInput].forEach((element) => {
+  element.addEventListener("input", () => {
+    if (element === els.checkLocationFilter) updateCheckUrlState();
+    renderCheckItems();
+  });
 });
 
 [els.costingSearchInput, els.costingCategoryFilter, els.costingStatusFilter, els.costingSortSelect].forEach((element) => {
@@ -1384,10 +1603,8 @@ els.ingredientRows.addEventListener("click", (event) => {
 els.tabButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const view = button.dataset.view;
-    els.tabButtons.forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
-    els.viewPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === view));
-    els.appTitle.textContent = view === "costing" ? "THE PORT原価" : "THE PORT 在庫管理";
-    document.title = view === "costing" ? "THE PORT原価" : "THE PORT 在庫管理";
+    switchView(view);
+    if (view === "check") updateCheckUrlState();
   });
 });
 
@@ -1408,6 +1625,13 @@ els.clearCostingFilters.addEventListener("click", () => {
   renderCostings();
 });
 
+els.clearCheckFilters.addEventListener("click", () => {
+  els.checkLocationFilter.value = "";
+  els.checkSearchInput.value = "";
+  updateCheckUrlState();
+  renderCheckItems();
+});
+
 els.table.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
@@ -1419,6 +1643,21 @@ els.table.addEventListener("click", (event) => {
   if (action === "use") openMovementForm(id, "use");
   if (action === "edit" && item) openForm(item);
   if (action === "delete") deleteItem(id);
+});
+
+els.checkGrid.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-check-action]");
+  if (!button) return;
+
+  const { checkAction, id } = button.dataset;
+  const item = items.find((entry) => entry.id === id);
+
+  if (checkAction === "increase") applyStockChange(id, 1, "冷蔵庫チェックで+1");
+  if (checkAction === "decrease") applyStockChange(id, -1, "冷蔵庫チェックで-1");
+  if (checkAction === "set") setCheckStock(id);
+  if (checkAction === "receive") openMovementForm(id, "receive");
+  if (checkAction === "use") openMovementForm(id, "use");
+  if (checkAction === "edit" && item) openForm(item);
 });
 
 els.costingGrid.addEventListener("click", (event) => {
@@ -1452,6 +1691,7 @@ async function init() {
   history = await loadHistory();
   costings = await loadCostings();
   render();
+  applyInitialViewFromUrl();
 }
 
 async function handleLogin() {
