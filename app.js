@@ -285,6 +285,7 @@ function normalizeItem(item) {
     reorderPoint: Number(item.reorderPoint) || 0,
     unitPrice: roundToTwoDecimals(item.unitPrice),
     gramPrice: roundToFourDecimals(item.gramPrice) || inferGramPriceFromNote(item.note),
+    checkSortOrder: Number.isFinite(Number(item.checkSortOrder)) ? Number(item.checkSortOrder) : null,
     note: cleanNote(item.note)
   };
 }
@@ -529,11 +530,12 @@ function fromDbItem(row) {
     reorderPoint: row.reorder_point,
     unitPrice: row.unit_price,
     gramPrice: row.gram_price,
+    checkSortOrder: row.check_sort_order,
     note: row.note
   };
 }
 
-function toDbItem(item, includeGramPrice = true) {
+function toDbItem(item, includeOptionalColumns = true) {
   const normalized = normalizeItem(item);
   const row = {
     id: normalized.id,
@@ -550,7 +552,10 @@ function toDbItem(item, includeGramPrice = true) {
     unit_price: normalized.unitPrice,
     note: normalized.note
   };
-  if (includeGramPrice) row.gram_price = Number(normalized.gramPrice) || 0;
+  if (includeOptionalColumns) {
+    row.gram_price = Number(normalized.gramPrice) || 0;
+    row.check_sort_order = normalized.checkSortOrder;
+  }
   return row;
 }
 
@@ -795,6 +800,9 @@ function getCheckItems() {
     })
     .sort((a, b) => {
       if (a.location !== b.location) return (a.location || "未設定").localeCompare(b.location || "未設定", "ja");
+      const orderA = Number.isFinite(Number(a.checkSortOrder)) ? Number(a.checkSortOrder) : Number.MAX_SAFE_INTEGER;
+      const orderB = Number.isFinite(Number(b.checkSortOrder)) ? Number(b.checkSortOrder) : Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
       return a.name.localeCompare(b.name, "ja");
     });
 }
@@ -823,6 +831,8 @@ function renderCheckItems() {
         <button class="check-step-button increase" data-check-action="increase" data-id="${item.id}" type="button">+1</button>
       </div>
       <div class="check-card-actions">
+        <button class="ghost-button" data-check-action="move-up" data-id="${item.id}" type="button">上へ</button>
+        <button class="ghost-button" data-check-action="move-down" data-id="${item.id}" type="button">下へ</button>
         <button class="ghost-button" data-check-action="set" data-id="${item.id}" type="button">数を入力</button>
         <button class="ghost-button" data-check-action="use" data-id="${item.id}" type="button">使用</button>
         <button class="ghost-button" data-check-action="receive" data-id="${item.id}" type="button">納品</button>
@@ -863,6 +873,25 @@ function updateCheckUrlState() {
   updateCheckUrlPreview();
   const url = buildCheckUrl(els.checkLocationFilter.value);
   window.history.replaceState(null, "", url);
+}
+
+function moveCheckItem(id, direction) {
+  const visibleItems = getCheckItems();
+  const index = visibleItems.findIndex((item) => item.id === id);
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || targetIndex < 0 || targetIndex >= visibleItems.length) return;
+
+  const reordered = [...visibleItems];
+  [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+  const existingOrders = reordered
+    .map((item) => Number(item.checkSortOrder))
+    .filter(Number.isFinite);
+  const startOrder = existingOrders.length ? Math.min(...existingOrders) : 0;
+  const orderById = new Map(reordered.map((item, itemIndex) => [item.id, startOrder + itemIndex]));
+
+  items = items.map((item) => orderById.has(item.id) ? { ...item, checkSortOrder: orderById.get(item.id) } : item);
+  saveItems();
+  renderCheckItems();
 }
 
 async function copyCheckUrl() {
@@ -1839,6 +1868,8 @@ els.checkGrid.addEventListener("click", (event) => {
   const { checkAction, id } = button.dataset;
   const item = items.find((entry) => entry.id === id);
 
+  if (checkAction === "move-up") moveCheckItem(id, "up");
+  if (checkAction === "move-down") moveCheckItem(id, "down");
   if (checkAction === "increase") applyStockChange(id, 1, "冷蔵庫チェックで+1");
   if (checkAction === "decrease") applyStockChange(id, -1, "冷蔵庫チェックで-1");
   if (checkAction === "set") setCheckStock(id);
