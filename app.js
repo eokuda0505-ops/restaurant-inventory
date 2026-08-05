@@ -5,7 +5,7 @@ const COSTINGS_KEY = "restaurant-inventory-costings-v1";
 const CHECK_URL_MANAGER_EMAIL = "okuda@anothertable.co.jp";
 
 const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類", "仕込み品"];
-const costingCategoryOptions = ["FOOD", "DESERT", "DRINK"];
+const costingCategoryOptions = ["FOOD", "DESERT", "DRINK", "PREP"];
 const storageLocationOptions = [
   "冷蔵庫１",
   "冷蔵庫２",
@@ -24,6 +24,7 @@ const storageLocationOptions = [
 let items = [];
 let history = [];
 let costings = [];
+let orderQuantities = {};
 let editingId = null;
 let editingCostingId = null;
 let supabaseClient = null;
@@ -34,6 +35,27 @@ const yen = new Intl.NumberFormat("ja-JP", {
   style: "currency",
   currency: "JPY",
   maximumFractionDigits: 0
+});
+
+const unitPriceYen = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2
+});
+
+const gramPriceYen = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 4
+});
+
+const costingGramPriceYen = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
 });
 
 const quantityFormat = new Intl.NumberFormat("ja-JP", {
@@ -94,6 +116,18 @@ const els = {
   checkResultCount: document.querySelector("#checkResultCount"),
   checkGrid: document.querySelector("#checkGrid"),
   checkEmptyState: document.querySelector("#checkEmptyState"),
+  orderSupplierFilter: document.querySelector("#orderSupplierFilter"),
+  orderSearchInput: document.querySelector("#orderSearchInput"),
+  orderStockMode: document.querySelector("#orderStockMode"),
+  clearOrderFilters: document.querySelector("#clearOrderFilters"),
+  copyOrderText: document.querySelector("#copyOrderText"),
+  openOrderMail: document.querySelector("#openOrderMail"),
+  exportOrderCsv: document.querySelector("#exportOrderCsv"),
+  markOrderDone: document.querySelector("#markOrderDone"),
+  orderResultCount: document.querySelector("#orderResultCount"),
+  orderList: document.querySelector("#orderList"),
+  orderEmptyState: document.querySelector("#orderEmptyState"),
+  orderTextPreview: document.querySelector("#orderTextPreview"),
   costingSearchInput: document.querySelector("#costingSearchInput"),
   costingCategoryFilter: document.querySelector("#costingCategoryFilter"),
   costingStatusFilter: document.querySelector("#costingStatusFilter"),
@@ -262,9 +296,34 @@ function normalizeItem(item) {
     idealWeekdayStock: Number(item.idealWeekdayStock) || 0,
     idealWeekendStock: Number(item.idealWeekendStock) || 0,
     reorderPoint: Number(item.reorderPoint) || 0,
-    unitPrice: Number(item.unitPrice) || 0,
+    unitPrice: roundToTwoDecimals(item.unitPrice),
+    gramPrice: roundToFourDecimals(item.gramPrice) || inferGramPriceFromNote(item.note),
+    checkSortOrder: Number.isFinite(Number(item.checkSortOrder)) ? Number(item.checkSortOrder) : null,
     note: cleanNote(item.note)
   };
+}
+
+function parseDecimalValue(value) {
+  const normalized = String(value ?? "")
+    .trim()
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace("．", ".")
+    .replace(",", ".");
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function roundToTwoDecimals(value) {
+  return Math.round(parseDecimalValue(value) * 100) / 100;
+}
+
+function roundToFourDecimals(value) {
+  return Math.round(parseDecimalValue(value) * 10000) / 10000;
+}
+
+function inferGramPriceFromNote(note) {
+  const match = String(note ?? "").match(/g単価[:：]\s*([0-9０-９]+(?:[.．][0-9０-９]+)?)/u);
+  return match ? roundToFourDecimals(match[1]) : 0;
 }
 
 async function loadCostings() {
@@ -421,6 +480,15 @@ async function saveItems() {
       .from("inventory_items")
       .upsert(items.map(toDbItem), { onConflict: "id" });
 
+    if (error?.code === "PGRST204" || error?.code === "42703") {
+      const { error: retryError } = await supabaseClient
+        .from("inventory_items")
+        .upsert(items.map((item) => toDbItem(item, false)), { onConflict: "id" });
+
+      if (retryError) alert(`在庫データの保存に失敗しました: ${retryError.message}`);
+      return;
+    }
+
     if (error) alert(`在庫データの保存に失敗しました: ${error.message}`);
   }
 }
@@ -474,13 +542,15 @@ function fromDbItem(row) {
     idealWeekendStock: row.ideal_weekend_stock,
     reorderPoint: row.reorder_point,
     unitPrice: row.unit_price,
+    gramPrice: row.gram_price,
+    checkSortOrder: row.check_sort_order,
     note: row.note
   };
 }
 
-function toDbItem(item) {
+function toDbItem(item, includeOptionalColumns = true) {
   const normalized = normalizeItem(item);
-  return {
+  const row = {
     id: normalized.id,
     name: normalized.name,
     sku: normalized.sku,
@@ -495,6 +565,11 @@ function toDbItem(item) {
     unit_price: normalized.unitPrice,
     note: normalized.note
   };
+  if (includeOptionalColumns) {
+    row.gram_price = Number(normalized.gramPrice) || 0;
+    row.check_sort_order = normalized.checkSortOrder;
+  }
+  return row;
 }
 
 function fromDbMovement(row) {
@@ -559,6 +634,8 @@ function render() {
   renderTable(getVisibleItems());
   renderCheckLocations();
   renderCheckItems();
+  renderOrderSuppliers();
+  renderOrders();
   renderCostings();
 }
 
@@ -738,6 +815,9 @@ function getCheckItems() {
     })
     .sort((a, b) => {
       if (a.location !== b.location) return (a.location || "未設定").localeCompare(b.location || "未設定", "ja");
+      const orderA = Number.isFinite(Number(a.checkSortOrder)) ? Number(a.checkSortOrder) : Number.MAX_SAFE_INTEGER;
+      const orderB = Number.isFinite(Number(b.checkSortOrder)) ? Number(b.checkSortOrder) : Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
       return a.name.localeCompare(b.name, "ja");
     });
 }
@@ -766,6 +846,8 @@ function renderCheckItems() {
         <button class="check-step-button increase" data-check-action="increase" data-id="${item.id}" type="button">+1</button>
       </div>
       <div class="check-card-actions">
+        <button class="ghost-button" data-check-action="move-up" data-id="${item.id}" type="button">上へ</button>
+        <button class="ghost-button" data-check-action="move-down" data-id="${item.id}" type="button">下へ</button>
         <button class="ghost-button" data-check-action="set" data-id="${item.id}" type="button">数を入力</button>
         <button class="ghost-button" data-check-action="use" data-id="${item.id}" type="button">使用</button>
         <button class="ghost-button" data-check-action="receive" data-id="${item.id}" type="button">納品</button>
@@ -773,6 +855,204 @@ function renderCheckItems() {
     `;
     els.checkGrid.append(article);
   });
+}
+
+function renderOrderSuppliers() {
+  const current = els.orderSupplierFilter.value;
+  const suppliers = getSupplierOptions();
+  els.orderSupplierFilter.innerHTML = '<option value="">すべて</option>';
+  suppliers.forEach((supplier) => {
+    const option = document.createElement("option");
+    option.value = supplier;
+    option.textContent = supplier;
+    els.orderSupplierFilter.append(option);
+  });
+  els.orderSupplierFilter.value = suppliers.includes(current) ? current : "";
+}
+
+function getSuggestedOrderQuantity(item) {
+  const stock = Number(item.stock) || 0;
+  const reorderPoint = Number(item.reorderPoint) || 0;
+  const ideal = els.orderStockMode.value === "weekend"
+    ? Number(item.idealWeekendStock) || 0
+    : Number(item.idealWeekdayStock) || 0;
+  const idealGap = ideal > 0 ? ideal - stock : 0;
+  const reorderGap = reorderPoint > 0 ? reorderPoint - stock : 0;
+  return Math.max(1, Math.ceil(Math.max(idealGap, reorderGap)));
+}
+
+function getOrderRows() {
+  const supplier = els.orderSupplierFilter.value;
+  const query = els.orderSearchInput.value.trim().toLowerCase();
+  return items
+    .filter((item) => {
+      const reorderPoint = Number(item.reorderPoint) || 0;
+      const stock = Number(item.stock) || 0;
+      const isCandidate = reorderPoint > 0 && stock <= reorderPoint;
+      const matchesSupplier = !supplier || item.supplier === supplier;
+      const haystack = `${item.name} ${item.supplier} ${item.category} ${item.location} ${item.note}`.toLowerCase();
+      return isCandidate && matchesSupplier && haystack.includes(query);
+    })
+    .sort((a, b) => {
+      const supplierCompare = (a.supplier || "未設定").localeCompare(b.supplier || "未設定", "ja");
+      if (supplierCompare !== 0) return supplierCompare;
+      return a.name.localeCompare(b.name, "ja");
+    })
+    .map((item) => ({
+      item,
+      suggestedQuantity: getSuggestedOrderQuantity(item),
+      orderQuantity: Number(orderQuantities[item.id]) > 0 ? Number(orderQuantities[item.id]) : getSuggestedOrderQuantity(item)
+    }));
+}
+
+function renderOrders() {
+  const rows = getOrderRows();
+  els.orderList.innerHTML = "";
+  els.orderResultCount.textContent = `${rows.length}件を表示中`;
+  els.orderEmptyState.hidden = rows.length !== 0;
+  els.orderTextPreview.hidden = rows.length === 0;
+  els.orderTextPreview.value = buildOrderText(rows);
+
+  const grouped = new Map();
+  rows.forEach((row) => {
+    const supplier = row.item.supplier || "未設定";
+    if (!grouped.has(supplier)) grouped.set(supplier, []);
+    grouped.get(supplier).push(row);
+  });
+
+  grouped.forEach((supplierRows, supplier) => {
+    const section = document.createElement("article");
+    section.className = "order-group";
+    section.innerHTML = `
+      <div class="order-group-header">
+        <div>
+          <h3>${escapeHtml(supplier)}</h3>
+          <p>${supplierRows.length}件</p>
+        </div>
+      </div>
+      <div class="table-wrap compact">
+        <table>
+          <thead>
+            <tr>
+              <th>商品名</th>
+              <th>現在庫</th>
+              <th>適正在庫</th>
+              <th>発注点</th>
+              <th>発注数</th>
+              <th>メモ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${supplierRows.map(({ item, suggestedQuantity, orderQuantity }) => `
+              <tr>
+                <td>
+                  <div class="product-main">
+                    <strong>${escapeHtml(item.name)}</strong>
+                    <span class="sku">${escapeHtml(item.location || "未設定")} / ${escapeHtml(item.category)}</span>
+                  </div>
+                </td>
+                <td>${formatQuantity(item.stock)} ${escapeHtml(item.unit)}</td>
+                <td>${formatQuantity(els.orderStockMode.value === "weekend" ? item.idealWeekendStock : item.idealWeekdayStock)} ${escapeHtml(item.unit)}</td>
+                <td>${formatQuantity(item.reorderPoint)} ${escapeHtml(item.unit)}</td>
+                <td>
+                  <input class="order-quantity-input" data-order-id="${item.id}" type="number" min="0" step="0.01" value="${escapeHtml(orderQuantity)}" aria-label="${escapeHtml(item.name)}の発注数">
+                  <span class="order-unit">${escapeHtml(item.unit)}</span>
+                  <small>推奨 ${formatQuantity(suggestedQuantity)} ${escapeHtml(item.unit)}</small>
+                </td>
+                <td>${escapeHtml(item.note || "")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+    els.orderList.append(section);
+  });
+}
+
+function buildOrderText(rows = getOrderRows()) {
+  if (rows.length === 0) return "";
+  const grouped = new Map();
+  rows.forEach((row) => {
+    const supplier = row.item.supplier || "未設定";
+    if (!grouped.has(supplier)) grouped.set(supplier, []);
+    grouped.get(supplier).push(row);
+  });
+
+  const date = new Date().toLocaleDateString("ja-JP");
+  return [...grouped.entries()].map(([supplier, supplierRows]) => {
+    const lines = supplierRows
+      .filter((row) => Number(row.orderQuantity) > 0)
+      .map((row) => `${row.item.name}　${formatQuantity(row.orderQuantity)}${row.item.unit}${row.item.note ? `　${row.item.note}` : ""}`);
+    return [`【${supplier} 発注】`, date, ...lines].join("\n");
+  }).join("\n\n");
+}
+
+async function copyOrderText() {
+  const text = buildOrderText();
+  if (!text) {
+    alert("コピーできる発注候補がありません。");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("発注文をコピーしました。LINEやメールに貼り付けて使えます。");
+  } catch {
+    window.prompt("この発注文をコピーしてください。", text);
+  }
+}
+
+function openOrderMail() {
+  const text = buildOrderText();
+  if (!text) {
+    alert("メールにできる発注候補がありません。");
+    return;
+  }
+  const supplier = els.orderSupplierFilter.value || "業者別";
+  const subject = encodeURIComponent(`THE PORT 発注 ${supplier}`);
+  const body = encodeURIComponent(text);
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+
+function exportOrderCsv() {
+  const rows = getOrderRows();
+  if (rows.length === 0) {
+    alert("出力できる発注候補がありません。");
+    return;
+  }
+  const csvRows = [
+    ["業者", "商品名", "現在庫", "適正在庫", "発注点", "発注数", "単位", "保管場所", "メモ"],
+    ...rows.map(({ item, orderQuantity }) => [
+      item.supplier || "未設定",
+      item.name,
+      item.stock,
+      els.orderStockMode.value === "weekend" ? item.idealWeekendStock : item.idealWeekdayStock,
+      item.reorderPoint,
+      orderQuantity,
+      item.unit,
+      item.location,
+      item.note
+    ])
+  ];
+  const csv = csvRows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `purchase-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function markOrderDone() {
+  const text = buildOrderText();
+  if (!text) {
+    alert("発注済みにできる候補がありません。");
+    return;
+  }
+  orderQuantities = {};
+  els.orderTextPreview.value = text;
+  alert("発注内容を確認しました。納品時は在庫管理の「仕入」で在庫を増やしてください。");
+  renderOrders();
 }
 
 function buildCheckUrl(location) {
@@ -808,6 +1088,25 @@ function updateCheckUrlState() {
   window.history.replaceState(null, "", url);
 }
 
+function moveCheckItem(id, direction) {
+  const visibleItems = getCheckItems();
+  const index = visibleItems.findIndex((item) => item.id === id);
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || targetIndex < 0 || targetIndex >= visibleItems.length) return;
+
+  const reordered = [...visibleItems];
+  [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+  const existingOrders = reordered
+    .map((item) => Number(item.checkSortOrder))
+    .filter(Number.isFinite);
+  const startOrder = existingOrders.length ? Math.min(...existingOrders) : 0;
+  const orderById = new Map(reordered.map((item, itemIndex) => [item.id, startOrder + itemIndex]));
+
+  items = items.map((item) => orderById.has(item.id) ? { ...item, checkSortOrder: orderById.get(item.id) } : item);
+  saveItems();
+  renderCheckItems();
+}
+
 async function copyCheckUrl() {
   if (!canManageCheckUrls()) {
     alert("このURLコピー機能は管理者のみ利用できます。");
@@ -841,6 +1140,7 @@ function switchView(view) {
   const titles = {
     inventory: "THE PORT 在庫管理",
     check: "冷蔵庫チェック",
+    order: "THE PORT 発注",
     costing: "THE PORT原価"
   };
   els.appTitle.textContent = titles[view] ?? titles.inventory;
@@ -878,7 +1178,8 @@ function renderTable(visibleItems) {
         </div>
       </td>
       <td>${formatQuantity(item.reorderPoint)} ${escapeHtml(item.unit)}</td>
-      <td>${yen.format(Number(item.unitPrice))}</td>
+      <td>${unitPriceYen.format(Number(item.unitPrice))}</td>
+      <td>${Number(item.gramPrice) > 0 ? gramPriceYen.format(Number(item.gramPrice)) : "-"}</td>
       <td>
         <div class="row-actions">
           <button class="action-button receive" data-action="receive" data-id="${item.id}" title="仕入れを追加">仕入</button>
@@ -900,38 +1201,40 @@ function renderCostings() {
 
   visibleCostings.forEach((costing) => {
     const summary = calculateCosting(costing);
+    const isPrep = costing.category === "PREP";
     const article = document.createElement("article");
     article.className = "costing-card";
     article.innerHTML = `
       <div class="costing-card-header">
         <button class="costing-title-button" data-costing-action="toggle" data-id="${costing.id}" type="button" aria-expanded="false">
           <h3>${escapeHtml(costing.name)}</h3>
-          <span class="costing-category-badge">${escapeHtml(costing.category)}</span>
+          <span class="costing-category-badge">${escapeHtml(formatCostingCategory(costing.category))}</span>
           ${costing.note ? `<p>${escapeHtml(costing.note)}</p>` : ""}
         </button>
         <div class="row-actions">
           <button class="icon-button" data-costing-action="move-up" data-id="${costing.id}" title="上へ移動" aria-label="上へ移動">↑</button>
           <button class="icon-button" data-costing-action="move-down" data-id="${costing.id}" title="下へ移動" aria-label="下へ移動">↓</button>
+          ${isPrep ? `<button class="icon-button" data-costing-action="sync-item" data-id="${costing.id}" title="在庫へ反映" aria-label="在庫へ反映">↻</button>` : ""}
           <button class="icon-button" data-costing-action="edit" data-id="${costing.id}" title="編集" aria-label="編集">✎</button>
           <button class="icon-button" data-costing-action="delete" data-id="${costing.id}" title="削除" aria-label="削除">×</button>
         </div>
       </div>
       <div class="costing-metrics">
         <div>
-          <span>1食原価</span>
-          <strong>${yen.format(summary.costPerServing)}</strong>
+          <span>${isPrep ? "g単価" : "1食原価"}</span>
+          <strong>${formatCostingCost(summary.costPerServing, isPrep)}</strong>
         </div>
         <div>
-          <span>販売価格</span>
-          <strong>${costing.salePrice > 0 ? yen.format(costing.salePrice) : "-"}</strong>
+          <span>${isPrep ? "仕上がり量" : "販売価格"}</span>
+          <strong>${isPrep ? `${formatQuantity(costing.yieldCount)}g` : costing.salePrice > 0 ? yen.format(costing.salePrice) : "-"}</strong>
         </div>
-        <div class="${summary.rate >= 35 ? "high-rate" : ""}">
-          <span>原価率</span>
-          <strong>${formatRate(summary.rate)}</strong>
+        <div class="${!isPrep && summary.rate >= 35 ? "high-rate" : ""}">
+          <span>${isPrep ? "総原価" : "原価率"}</span>
+          <strong>${isPrep ? yen.format(summary.totalCost) : formatRate(summary.rate)}</strong>
         </div>
         <div>
-          <span>粗利</span>
-          <strong>${costing.salePrice > 0 ? yen.format(costing.salePrice - summary.costPerServing) : "-"}</strong>
+          <span>${isPrep ? "在庫反映" : "粗利"}</span>
+          <strong>${isPrep ? "仕込み品" : costing.salePrice > 0 ? yen.format(costing.salePrice - summary.costPerServing) : "-"}</strong>
         </div>
       </div>
       <div class="ingredient-list" hidden>
@@ -940,6 +1243,16 @@ function renderCostings() {
     `;
     els.costingGrid.append(article);
   });
+}
+
+function formatCostingCategory(category) {
+  const labels = {
+    FOOD: "FOOD",
+    DESERT: "DESERT",
+    DRINK: "DRINK",
+    PREP: "仕込み品"
+  };
+  return labels[category] ?? category;
 }
 
 function renderIngredientLine(line) {
@@ -990,9 +1303,11 @@ function compareCostingSortOrder(a, b) {
 function calculateCosting(costing) {
   const lines = costing.ingredients.map((ingredient) => {
     const item = items.find((entry) => entry.id === ingredient.itemId);
-    const unitPrice = Number(ingredient.unitPrice) > 0 ? Number(ingredient.unitPrice) : Number(item?.unitPrice) || 0;
+    const enteredUnitPrice = Number(ingredient.unitPrice) || 0;
+    const itemCostingPrice = getItemCostingUnitPrice(item);
+    const unitPrice = itemCostingPrice > 0 ? itemCostingPrice : enteredUnitPrice;
     const cost = unitPrice > 0 ? Number(ingredient.quantity) * unitPrice : Number(ingredient.cost) || 0;
-    return { ...ingredient, item, cost };
+    return { ...ingredient, item, unitPrice, cost };
   });
   const totalCost = lines.reduce((sum, line) => sum + line.cost, 0);
   const costPerServing = totalCost / Math.max(1, Number(costing.yieldCount) || 1);
@@ -1000,9 +1315,19 @@ function calculateCosting(costing) {
   return { lines, totalCost, costPerServing, rate };
 }
 
+function getItemCostingUnitPrice(item) {
+  if (!item) return 0;
+  const gramPrice = Number(item.gramPrice) || 0;
+  return gramPrice > 0 ? gramPrice : Number(item.unitPrice) || 0;
+}
+
 function formatRate(value) {
   if (!Number.isFinite(value) || value <= 0) return "-";
   return `${quantityFormat.format(value)}%`;
+}
+
+function formatCostingCost(value, isPrep = false) {
+  return isPrep ? costingGramPriceYen.format(Number(value) || 0) : yen.format(Number(value) || 0);
 }
 
 function formatQuantity(value) {
@@ -1139,13 +1464,15 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
       <select class="ingredient-unit">
         <option value="枚">枚</option>
         <option value="g">g</option>
+        <option value="玉">玉</option>
+        <option value="個">個</option>
         <option value="人前">人前</option>
         <option value="食分">食分</option>
       </select>
     </label>
     <label>
-      単価
-      <input class="ingredient-unit-price" type="number" min="0" step="0.01" placeholder="在庫未紐づけ時">
+      g単価
+      <input class="ingredient-unit-price" type="number" min="0" step="0.0001" placeholder="在庫未紐づけ時">
     </label>
     <div class="ingredient-row-total" aria-live="polite">
       <span>小計</span>
@@ -1163,12 +1490,17 @@ function addIngredientRow(ingredient = { itemId: "", quantity: 1, memo: "" }) {
   setIngredientUnit(row.querySelector(".ingredient-unit"), ingredient.unit ?? "g");
   row.querySelector(".ingredient-cost").value = ingredient.cost || "";
   row.querySelector(".ingredient-memo").value = ingredient.memo ?? "";
+  refreshIngredientRowFromLinkedItem(row, { overwriteName: false });
   els.ingredientRows.append(row);
   updateIngredientRowTotal(row);
 }
 
 function getIngredientItemLabel(item) {
-  return `${item.name} / ${item.unit} / ${yen.format(Number(item.unitPrice))}`;
+  const gramPrice = Number(item.gramPrice) || 0;
+  const priceLabel = gramPrice > 0
+    ? `g単価 ${gramPriceYen.format(gramPrice)}`
+    : `g単価 ${unitPriceYen.format(Number(item.unitPrice))}`;
+  return `${item.name} / ${item.unit} / ${priceLabel}`;
 }
 
 function getIngredientSearchValue(itemId) {
@@ -1190,19 +1522,26 @@ function setIngredientUnit(select, unit) {
 }
 
 function normalizeCostingUnit(unit) {
-  if (unit === "g" || unit === "枚" || unit === "人前" || unit === "食分") return unit;
-  if (["本", "個", "玉", "pac", "缶", "ケース", "束"].includes(unit)) return "枚";
+  if (unit === "g" || unit === "枚" || unit === "玉" || unit === "個" || unit === "人前" || unit === "食分") return unit;
+  if (["本", "pac", "缶", "ケース", "束"].includes(unit)) return "枚";
   return "g";
 }
 
 function syncIngredientRowFromItem(row) {
+  refreshIngredientRowFromLinkedItem(row, { overwriteName: true });
+}
+
+function refreshIngredientRowFromLinkedItem(row, { overwriteName = true } = {}) {
   const item = items.find((entry) => entry.id === row.querySelector(".ingredient-item").value);
   if (!item) return;
 
-  row.querySelector(".ingredient-name").value = item.name;
+  if (overwriteName || !row.querySelector(".ingredient-name").value.trim()) {
+    row.querySelector(".ingredient-name").value = item.name;
+  }
   const unitPriceInput = row.querySelector(".ingredient-unit-price");
-  if (!Number(unitPriceInput.value)) unitPriceInput.value = Number(item.unitPrice) || "";
-  setIngredientUnit(row.querySelector(".ingredient-unit"), item.unit);
+  const costingUnitPrice = getItemCostingUnitPrice(item);
+  unitPriceInput.value = costingUnitPrice || "";
+  setIngredientUnit(row.querySelector(".ingredient-unit"), Number(item.gramPrice) > 0 ? "g" : item.unit);
   row.querySelector(".ingredient-cost").value = "";
   updateIngredientRowTotal(row);
 }
@@ -1226,7 +1565,8 @@ function updateIngredientRowTotal(row) {
   const quantity = Number(row.querySelector(".ingredient-quantity").value) || 0;
   const enteredUnitPrice = Number(row.querySelector(".ingredient-unit-price").value) || 0;
   const item = items.find((entry) => entry.id === row.querySelector(".ingredient-item").value);
-  const unitPrice = enteredUnitPrice > 0 ? enteredUnitPrice : Number(item?.unitPrice) || 0;
+  const itemCostingPrice = getItemCostingUnitPrice(item);
+  const unitPrice = enteredUnitPrice > 0 ? enteredUnitPrice : itemCostingPrice;
   const total = quantity * unitPrice;
   row.querySelector(".ingredient-row-total strong").textContent = yen.format(total);
 }
@@ -1257,8 +1597,8 @@ function updateCostingPreview() {
     ingredients: getCostingFormIngredients()
   });
   const summary = calculateCosting(draft);
-  els.costingPreviewCost.textContent = yen.format(summary.costPerServing);
-  els.costingPreviewRate.textContent = formatRate(summary.rate);
+  els.costingPreviewCost.textContent = formatCostingCost(summary.costPerServing, draft.category === "PREP");
+  els.costingPreviewRate.textContent = draft.category === "PREP" ? `${yen.format(summary.totalCost)} / ${formatQuantity(draft.yieldCount)}g` : formatRate(summary.rate);
 }
 
 function handleCostingSubmit(event) {
@@ -1320,6 +1660,50 @@ function moveCosting(id, direction) {
   });
   saveCostings();
   renderCostings();
+}
+
+function syncPrepCostingToInventory(id) {
+  const costing = costings.find((entry) => entry.id === id);
+  if (!costing) return;
+
+  if (costing.category !== "PREP") {
+    alert("仕込み品カテゴリのみ在庫へ反映できます。");
+    return;
+  }
+
+  const summary = calculateCosting(costing);
+  if (!costing.name || summary.costPerServing <= 0) {
+    alert("仕込み品名、材料、仕上がり量を確認してください。");
+    return;
+  }
+
+  const existing = items.find((item) => item.name === costing.name && item.category === "仕込み品");
+  const inventoryItem = normalizeItem({
+    ...(existing ?? {}),
+    id: existing?.id ?? `prep-${costing.id}`,
+    name: costing.name,
+    sku: existing?.sku || `PREP-${costing.name}`,
+    category: "仕込み品",
+    supplier: existing?.supplier ?? "自家製",
+    location: existing?.location ?? "",
+    unit: "g",
+    stock: existing?.stock ?? 0,
+    idealWeekdayStock: existing?.idealWeekdayStock ?? 0,
+    idealWeekendStock: existing?.idealWeekendStock ?? 0,
+    reorderPoint: existing?.reorderPoint ?? 0,
+    unitPrice: Number(summary.costPerServing.toFixed(4)),
+    note: `仕込み品原価から反映 / 仕上がり量: ${formatQuantity(costing.yieldCount)}g / 総原価: ${yen.format(summary.totalCost)}`
+  });
+
+  if (existing) {
+    items = items.map((item) => (item.id === existing.id ? inventoryItem : item));
+  } else {
+    items.push(inventoryItem);
+  }
+
+  saveItems();
+  render();
+  alert(`${costing.name}を在庫マスターへ反映しました。`);
 }
 
 function applyCostingSortOrder() {
@@ -1438,7 +1822,7 @@ async function deleteRemoteItem(id) {
 
 function exportCsv() {
   const rows = [
-    ["個別商品名", "管理番号", "カテゴリ", "業者名", "保管場所", "単位", "現在庫", "適正在庫 平日", "適正在庫 土日", "発注点", "単価", "メモ"],
+    ["個別商品名", "管理番号", "カテゴリ", "業者名", "保管場所", "単位", "現在庫", "適正在庫 平日", "適正在庫 土日", "発注点", "単価", "g単価", "メモ"],
     ...items.map((item) => [
       item.name,
       item.sku,
@@ -1451,6 +1835,7 @@ function exportCsv() {
       item.idealWeekendStock,
       item.reorderPoint,
       item.unitPrice,
+      item.gramPrice,
       item.note
     ])
   ];
@@ -1465,17 +1850,19 @@ function exportCsv() {
 
 function exportCostingCsv() {
   const rows = [
-    ["メニュー名", "販売価格", "仕込み単位", "1食原価", "原価率", "粗利", "材料", "メモ"],
+    ["メニュー名", "カテゴリー", "販売価格", "仕込み単位/仕上がり量g", "1食原価/g単価", "原価率", "粗利/総原価", "材料", "メモ"],
     ...costings.map((costing) => {
       const summary = calculateCosting(costing);
+      const isPrep = costing.category === "PREP";
       return [
         costing.name,
+        formatCostingCategory(costing.category),
         costing.salePrice,
         costing.yieldCount,
         Math.round(summary.costPerServing),
-        formatRate(summary.rate),
-        costing.salePrice > 0 ? Math.round(costing.salePrice - summary.costPerServing) : "",
-        summary.lines.map((line) => `${line.item?.name ?? "削除済み"} ${formatQuantity(line.quantity)}${line.item?.unit ?? ""}`).join(" / "),
+        isPrep ? "" : formatRate(summary.rate),
+        isPrep ? Math.round(summary.totalCost) : costing.salePrice > 0 ? Math.round(costing.salePrice - summary.costPerServing) : "",
+        summary.lines.map((line) => `${line.item?.name ?? line.name ?? "削除済み"} ${formatQuantity(line.quantity)}${line.unit || line.item?.unit || ""}`).join(" / "),
         costing.note
       ];
     })
@@ -1511,7 +1898,8 @@ function importCsv(file) {
       idealWeekendStock: row.length >= 12 ? row[8] : 0,
       reorderPoint: row.length >= 12 ? row[9] : row[7],
       unitPrice: row.length >= 12 ? row[10] : row[8],
-      note: row.length >= 12 ? row[11] || "" : row[9] || ""
+      gramPrice: row.length >= 13 ? row[11] : "",
+      note: row.length >= 13 ? row[12] || "" : row.length >= 12 ? row[11] || "" : row[9] || ""
     }));
 
     if (imported.length === 0) {
@@ -1572,6 +1960,10 @@ els.addIngredientRow.addEventListener("click", () => {
 });
 els.exportCostingCsv.addEventListener("click", exportCostingCsv);
 els.copyCheckUrl.addEventListener("click", copyCheckUrl);
+els.copyOrderText.addEventListener("click", copyOrderText);
+els.openOrderMail.addEventListener("click", openOrderMail);
+els.exportOrderCsv.addEventListener("click", exportOrderCsv);
+els.markOrderDone.addEventListener("click", markOrderDone);
 els.importCsv.addEventListener("change", (event) => {
   const [file] = event.target.files;
   if (file) importCsv(file);
@@ -1587,6 +1979,10 @@ els.importCsv.addEventListener("change", (event) => {
     if (element === els.checkLocationFilter) updateCheckUrlState();
     renderCheckItems();
   });
+});
+
+[els.orderSupplierFilter, els.orderSearchInput, els.orderStockMode].forEach((element) => {
+  element.addEventListener("input", renderOrders);
 });
 
 [els.costingSearchInput, els.costingCategoryFilter, els.costingStatusFilter, els.costingSortSelect].forEach((element) => {
@@ -1674,6 +2070,20 @@ els.clearCheckFilters.addEventListener("click", () => {
   renderCheckItems();
 });
 
+els.clearOrderFilters.addEventListener("click", () => {
+  els.orderSupplierFilter.value = "";
+  els.orderSearchInput.value = "";
+  els.orderStockMode.value = "weekday";
+  renderOrders();
+});
+
+els.orderList.addEventListener("input", (event) => {
+  if (!event.target.classList.contains("order-quantity-input")) return;
+  const { orderId } = event.target.dataset;
+  orderQuantities[orderId] = Number(event.target.value) || 0;
+  els.orderTextPreview.value = buildOrderText();
+});
+
 els.table.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
@@ -1694,6 +2104,8 @@ els.checkGrid.addEventListener("click", (event) => {
   const { checkAction, id } = button.dataset;
   const item = items.find((entry) => entry.id === id);
 
+  if (checkAction === "move-up") moveCheckItem(id, "up");
+  if (checkAction === "move-down") moveCheckItem(id, "down");
   if (checkAction === "increase") applyStockChange(id, 1, "冷蔵庫チェックで+1");
   if (checkAction === "decrease") applyStockChange(id, -1, "冷蔵庫チェックで-1");
   if (checkAction === "set") setCheckStock(id);
@@ -1712,6 +2124,7 @@ els.costingGrid.addEventListener("click", (event) => {
   if (costingAction === "toggle") toggleCostingDetails(button);
   if (costingAction === "move-up") moveCosting(id, "up");
   if (costingAction === "move-down") moveCosting(id, "down");
+  if (costingAction === "sync-item") syncPrepCostingToInventory(id);
   if (costingAction === "edit" && costing) openCostingForm(costing);
   if (costingAction === "delete") deleteCosting(id);
 });

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>THE PORT 在庫管理</title>
-  <link rel="stylesheet" href="styles.css?v=20260712-check-permissions">
+  <link rel="stylesheet" href="styles.css?v=20260805-order-system">
 </head>
 <body>
   <main class="app-shell">
@@ -38,6 +38,7 @@
     <nav class="view-tabs" aria-label="表示切り替え">
       <button class="tab-button active" data-view="inventory" type="button">在庫管理</button>
       <button class="tab-button" data-view="check" type="button">冷蔵庫チェック</button>
+      <button class="tab-button" data-view="order" type="button">発注</button>
       <button class="tab-button" data-view="costing" type="button">原価計算</button>
     </nav>
 
@@ -120,6 +121,7 @@
                 <th>適正在庫</th>
                 <th>発注点</th>
                 <th>単価</th>
+                <th>g単価</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -169,6 +171,51 @@
       </section>
     </section>
 
+    <section class="order-layout app-view" data-view-panel="order">
+      <aside class="side-panel">
+        <div class="panel-header">
+          <h2>発注条件</h2>
+          <button class="ghost-button" id="clearOrderFilters" type="button">解除</button>
+        </div>
+        <label>
+          業者
+          <select id="orderSupplierFilter">
+            <option value="">すべて</option>
+          </select>
+        </label>
+        <label>
+          検索
+          <input id="orderSearchInput" type="search" placeholder="商品名・業者・メモ">
+        </label>
+        <label>
+          適正在庫
+          <select id="orderStockMode">
+            <option value="weekday">平日</option>
+            <option value="weekend">土日</option>
+          </select>
+        </label>
+        <button class="primary-button full-button" id="copyOrderText" type="button">発注文をコピー</button>
+        <button class="ghost-button full-button" id="openOrderMail" type="button">メール下書き</button>
+        <button class="ghost-button full-button" id="exportOrderCsv" type="button">発注CSV</button>
+        <button class="ghost-button full-button" id="markOrderDone" type="button">発注済みにする</button>
+      </aside>
+
+      <section class="order-area">
+        <div class="inventory-toolbar">
+          <div>
+            <h2>業者別 発注候補</h2>
+            <p id="orderResultCount">0件を表示中</p>
+          </div>
+        </div>
+        <div class="order-list" id="orderList"></div>
+        <div class="empty-state" id="orderEmptyState" hidden>
+          <h3>発注候補がありません</h3>
+          <p>発注点を下回った商品がここに表示されます。</p>
+        </div>
+        <textarea id="orderTextPreview" class="order-text-preview" readonly hidden></textarea>
+      </section>
+    </section>
+
     <section class="costing-layout app-view" data-view-panel="costing">
       <aside class="side-panel">
         <div class="panel-header">
@@ -186,6 +233,7 @@
             <option value="FOOD">FOOD</option>
             <option value="DESERT">DESERT</option>
             <option value="DRINK">DRINK</option>
+            <option value="PREP">仕込み品</option>
           </select>
         </label>
         <label>
@@ -296,7 +344,13 @@
         </label>
         <label>
           単価
-          <input id="unitPrice" type="number" min="0" step="1" required placeholder="1単位あたり">
+          <input id="unitPrice" type="text" inputmode="decimal" pattern="^[0-9０-９]+([.．][0-9０-９]{1,2})?$" required placeholder="例: 1.14">
+          <span class="form-help">小数点2桁まで入力できます。</span>
+        </label>
+        <label>
+          g単価
+          <input id="gramPrice" type="text" inputmode="decimal" pattern="^[0-9０-９]+([.．][0-9０-９]{1,4})?$" placeholder="例: 1.1433">
+          <span class="form-help">原価計算ではこちらを優先します。</span>
         </label>
         <label>
           メモ
@@ -353,15 +407,16 @@
             <option value="FOOD">FOOD</option>
             <option value="DESERT">DESERT</option>
             <option value="DRINK">DRINK</option>
+            <option value="PREP">仕込み品</option>
           </select>
         </label>
         <label>
           販売価格
-          <input id="costingSalePrice" type="number" min="0" step="1" placeholder="税込/税抜は店舗ルールで統一">
+          <input id="costingSalePrice" type="number" min="0" step="1" placeholder="仕込み品は空欄でOK">
         </label>
         <label>
-          仕込み単位
-          <input id="costingYield" type="number" min="1" step="1" required value="1">
+          仕込み単位 / 仕上がり量g
+          <input id="costingYield" type="number" min="1" step="0.01" required value="1">
         </label>
         <label>
           メモ
@@ -379,7 +434,7 @@
       </div>
 
       <div class="costing-preview">
-        <span>1食あたり原価</span>
+        <span>1食/g単価</span>
         <strong id="costingPreviewCost">¥0</strong>
         <span>原価率</span>
         <strong id="costingPreviewRate">-</strong>
@@ -394,6 +449,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
-  <script src="app.js?v=20260712-check-permissions"></script>
+  <script src="app.js?v=20260805-order-system"></script>
 </body>
 </html>

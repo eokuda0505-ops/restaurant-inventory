@@ -236,7 +236,8 @@ h2 {
 }
 
 .costing-layout,
-.check-layout {
+.check-layout,
+.order-layout {
   grid-template-columns: 270px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
@@ -245,7 +246,8 @@ h2 {
 .side-panel,
 .inventory-area,
 .costing-area,
-.check-area {
+.check-area,
+.order-area {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -321,6 +323,11 @@ button:focus-visible {
   overflow: hidden;
 }
 
+.order-area {
+  min-width: 0;
+  overflow: hidden;
+}
+
 .full-button {
   width: 100%;
 }
@@ -342,6 +349,10 @@ button:focus-visible {
 
 .table-wrap {
   overflow-x: auto;
+}
+
+.table-wrap.compact table {
+  min-width: 900px;
 }
 
 table {
@@ -615,6 +626,75 @@ td {
   white-space: nowrap;
 }
 
+.order-list {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.order-group {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.order-group-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.order-group-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.order-group-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.order-quantity-input {
+  display: inline-block;
+  width: 92px;
+  min-height: 40px;
+  margin-right: 6px;
+  font-weight: 800;
+}
+
+.order-unit {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.order-group small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.order-text-preview {
+  width: calc(100% - 32px);
+  min-height: 180px;
+  margin: 0 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  resize: vertical;
+  color: var(--text);
+  background: var(--surface-soft);
+}
+
 .costing-grid {
   display: grid;
   gap: 12px;
@@ -843,11 +923,12 @@ dialog::backdrop {
 
 @media (max-width: 850px) {
   .topbar,
-  .workspace,
-  .costing-layout,
-  .check-layout {
-    grid-template-columns: 1fr;
-  }
+	  .workspace,
+	  .costing-layout,
+	  .check-layout,
+	  .order-layout {
+	    grid-template-columns: 1fr;
+	  }
 
   .topbar {
     display: grid;
