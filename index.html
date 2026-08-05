@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>THE PORT 在庫管理</title>
-  <link rel="stylesheet" href="styles.css?v=20260712-prep-costing">
+  <link rel="stylesheet" href="styles.css?v=20260712-check-permissions">
 </head>
 <body>
   <main class="app-shell">
@@ -120,7 +120,6 @@
                 <th>適正在庫</th>
                 <th>発注点</th>
                 <th>単価</th>
-                <th>g単価</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -187,7 +186,6 @@
             <option value="FOOD">FOOD</option>
             <option value="DESERT">DESERT</option>
             <option value="DRINK">DRINK</option>
-            <option value="PREP">仕込み品</option>
           </select>
         </label>
         <label>
@@ -298,13 +296,7 @@
         </label>
         <label>
           単価
-          <input id="unitPrice" type="text" inputmode="decimal" pattern="^[0-9０-９]+([.．][0-9０-９]{1,2})?$" required placeholder="例: 1.14">
-          <span class="form-help">小数点2桁まで入力できます。</span>
-        </label>
-        <label>
-          g単価
-          <input id="gramPrice" type="text" inputmode="decimal" pattern="^[0-9０-９]+([.．][0-9０-９]{1,4})?$" placeholder="例: 1.1433">
-          <span class="form-help">原価計算ではこちらを優先します。</span>
+          <input id="unitPrice" type="number" min="0" step="1" required placeholder="1単位あたり">
         </label>
         <label>
           メモ
@@ -361,16 +353,15 @@
             <option value="FOOD">FOOD</option>
             <option value="DESERT">DESERT</option>
             <option value="DRINK">DRINK</option>
-            <option value="PREP">仕込み品</option>
           </select>
         </label>
         <label>
           販売価格
-          <input id="costingSalePrice" type="number" min="0" step="1" placeholder="仕込み品は空欄でOK">
+          <input id="costingSalePrice" type="number" min="0" step="1" placeholder="税込/税抜は店舗ルールで統一">
         </label>
         <label>
-          仕込み単位 / 仕上がり量g
-          <input id="costingYield" type="number" min="1" step="0.01" required value="1">
+          仕込み単位
+          <input id="costingYield" type="number" min="1" step="1" required value="1">
         </label>
         <label>
           メモ
@@ -388,7 +379,7 @@
       </div>
 
       <div class="costing-preview">
-        <span>1食/g単価</span>
+        <span>1食あたり原価</span>
         <strong id="costingPreviewCost">¥0</strong>
         <span>原価率</span>
         <strong id="costingPreviewRate">-</strong>
@@ -403,6 +394,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
-  <script src="app.js?v=20260714-check-sort-order"></script>
+  <script src="app.js?v=20260712-check-permissions"></script>
 </body>
 </html>
