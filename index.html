@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>THE PORT 在庫管理</title>
-  <link rel="stylesheet" href="styles.css?v=20260805-order-system">
+  <link rel="stylesheet" href="styles.css?v=20260806-supplier-order-settings-visible">
 </head>
 <body>
   <main class="app-shell">
@@ -195,6 +195,7 @@
           </select>
         </label>
         <button class="primary-button full-button" id="copyOrderText" type="button">発注文をコピー</button>
+        <button class="ghost-button full-button" id="openSupplierOrderSettings" type="button">業者設定</button>
         <button class="ghost-button full-button" id="openOrderMail" type="button">メール下書き</button>
         <button class="ghost-button full-button" id="exportOrderCsv" type="button">発注CSV</button>
         <button class="ghost-button full-button" id="markOrderDone" type="button">発注済みにする</button>
@@ -206,6 +207,7 @@
             <h2>業者別 発注候補</h2>
             <p id="orderResultCount">0件を表示中</p>
           </div>
+          <button class="ghost-button" id="openSupplierOrderSettingsTop" type="button">業者設定</button>
         </div>
         <div class="order-list" id="orderList"></div>
         <div class="empty-state" id="orderEmptyState" hidden>
@@ -390,6 +392,57 @@
     </form>
   </dialog>
 
+  <dialog id="supplierOrderDialog">
+    <form method="dialog" class="item-form" id="supplierOrderForm">
+      <div class="modal-header">
+        <h2>業者発注設定</h2>
+        <button class="icon-button" value="cancel" title="閉じる" aria-label="閉じる">×</button>
+      </div>
+      <div class="form-grid">
+        <label>
+          業者名
+          <input id="supplierOrderName" list="supplierOptions" required maxlength="60" placeholder="例: タカナシ">
+        </label>
+        <label>
+          発注方法
+          <select id="supplierOrderMethod">
+            <option value="LINE">LINE</option>
+            <option value="メール">メール</option>
+            <option value="FAX">FAX</option>
+            <option value="WEB">WEB</option>
+            <option value="電話">電話</option>
+            <option value="その他">その他</option>
+          </select>
+        </label>
+        <label>
+          連絡先
+          <input id="supplierOrderContact" maxlength="120" placeholder="メール、電話番号、URLなど">
+        </label>
+        <label>
+          締切時間
+          <input id="supplierOrderCutoff" maxlength="40" placeholder="例: 前日15時、当日10時">
+        </label>
+        <label>
+          納品曜日
+          <input id="supplierOrderDeliveryDays" maxlength="80" placeholder="例: 月水金、翌日納品">
+        </label>
+        <label>
+          最小発注・注意
+          <input id="supplierOrderMinimum" maxlength="120" placeholder="例: ケース単位、前日発注のみ">
+        </label>
+        <label class="form-wide">
+          発注メモ
+          <input id="supplierOrderMemo" maxlength="160" placeholder="発注文に表示したい注意事項">
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-button danger" id="deleteSupplierOrderSettings" type="button">設定削除</button>
+        <button class="ghost-button" value="cancel" type="button" id="cancelSupplierOrderSettings">キャンセル</button>
+        <button class="primary-button" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="costingDialog">
     <form method="dialog" class="item-form costing-form" id="costingForm">
       <div class="modal-header">
@@ -449,6 +502,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
-  <script src="app.js?v=20260805-order-system"></script>
+  <script src="app.js?v=20260806-supplier-order-settings-visible"></script>
 </body>
 </html>

@@ -12,12 +12,16 @@ create table if not exists public.inventory_items (
   reorder_point numeric not null default 0,
   unit_price numeric not null default 0,
   gram_price numeric not null default 0,
+  check_sort_order numeric,
   note text,
   updated_at timestamptz not null default now()
 );
 
 alter table public.inventory_items
 add column if not exists gram_price numeric not null default 0;
+
+alter table public.inventory_items
+add column if not exists check_sort_order numeric;
 
 create table if not exists public.inventory_movements (
   id uuid primary key default gen_random_uuid(),
@@ -42,12 +46,24 @@ create table if not exists public.menu_costings (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.supplier_order_settings (
+  supplier text primary key,
+  method text not null default 'LINE',
+  contact text,
+  cutoff text,
+  delivery_days text,
+  minimum_order text,
+  memo text,
+  updated_at timestamptz not null default now()
+);
+
 alter table public.menu_costings
 add column if not exists category text not null default 'FOOD';
 
 alter table public.inventory_items enable row level security;
 alter table public.inventory_movements enable row level security;
 alter table public.menu_costings enable row level security;
+alter table public.supplier_order_settings enable row level security;
 
 create policy "authenticated users can read inventory"
 on public.inventory_items for select
@@ -101,6 +117,27 @@ on public.menu_costings for delete
 to authenticated
 using (true);
 
+create policy "authenticated users can read supplier order settings"
+on public.supplier_order_settings for select
+to authenticated
+using (true);
+
+create policy "authenticated users can insert supplier order settings"
+on public.supplier_order_settings for insert
+to authenticated
+with check (true);
+
+create policy "authenticated users can update supplier order settings"
+on public.supplier_order_settings for update
+to authenticated
+using (true)
+with check (true);
+
+create policy "authenticated users can delete supplier order settings"
+on public.supplier_order_settings for delete
+to authenticated
+using (true);
+
 create or replace function public.touch_inventory_updated_at()
 returns trigger
 language plpgsql
@@ -132,3 +169,19 @@ create trigger menu_costings_touch_updated_at
 before update on public.menu_costings
 for each row
 execute function public.touch_menu_costings_updated_at();
+
+create or replace function public.touch_supplier_order_settings_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists supplier_order_settings_touch_updated_at on public.supplier_order_settings;
+create trigger supplier_order_settings_touch_updated_at
+before update on public.supplier_order_settings
+for each row
+execute function public.touch_supplier_order_settings_updated_at();

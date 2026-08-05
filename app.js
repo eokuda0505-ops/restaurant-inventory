@@ -2,6 +2,7 @@ const STORAGE_KEY = "restaurant-inventory-items-v3";
 const HISTORY_KEY = "restaurant-inventory-history-v3";
 const SUPPLIER_KEY = "restaurant-inventory-suppliers-v1";
 const COSTINGS_KEY = "restaurant-inventory-costings-v1";
+const SUPPLIER_ORDER_SETTINGS_KEY = "restaurant-inventory-supplier-order-settings-v1";
 const CHECK_URL_MANAGER_EMAIL = "okuda@anothertable.co.jp";
 
 const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類", "仕込み品"];
@@ -24,6 +25,7 @@ const storageLocationOptions = [
 let items = [];
 let history = [];
 let costings = [];
+let supplierOrderSettings = [];
 let orderQuantities = {};
 let editingId = null;
 let editingCostingId = null;
@@ -121,6 +123,8 @@ const els = {
   orderStockMode: document.querySelector("#orderStockMode"),
   clearOrderFilters: document.querySelector("#clearOrderFilters"),
   copyOrderText: document.querySelector("#copyOrderText"),
+  openSupplierOrderSettings: document.querySelector("#openSupplierOrderSettings"),
+  openSupplierOrderSettingsTop: document.querySelector("#openSupplierOrderSettingsTop"),
   openOrderMail: document.querySelector("#openOrderMail"),
   exportOrderCsv: document.querySelector("#exportOrderCsv"),
   markOrderDone: document.querySelector("#markOrderDone"),
@@ -150,7 +154,18 @@ const els = {
   addIngredientRow: document.querySelector("#addIngredientRow"),
   costingPreviewCost: document.querySelector("#costingPreviewCost"),
   costingPreviewRate: document.querySelector("#costingPreviewRate"),
-  cancelCostingForm: document.querySelector("#cancelCostingForm")
+  cancelCostingForm: document.querySelector("#cancelCostingForm"),
+  supplierOrderDialog: document.querySelector("#supplierOrderDialog"),
+  supplierOrderForm: document.querySelector("#supplierOrderForm"),
+  supplierOrderName: document.querySelector("#supplierOrderName"),
+  supplierOrderMethod: document.querySelector("#supplierOrderMethod"),
+  supplierOrderContact: document.querySelector("#supplierOrderContact"),
+  supplierOrderCutoff: document.querySelector("#supplierOrderCutoff"),
+  supplierOrderDeliveryDays: document.querySelector("#supplierOrderDeliveryDays"),
+  supplierOrderMinimum: document.querySelector("#supplierOrderMinimum"),
+  supplierOrderMemo: document.querySelector("#supplierOrderMemo"),
+  cancelSupplierOrderSettings: document.querySelector("#cancelSupplierOrderSettings"),
+  deleteSupplierOrderSettings: document.querySelector("#deleteSupplierOrderSettings")
 };
 
 function hasSupabaseConfig() {
@@ -214,10 +229,11 @@ function updateSyncTimer() {
 
 async function refreshFromCloud() {
   if (!supabaseClient || !currentUser) return;
-  if (els.dialog.open || els.movementDialog.open || els.costingDialog.open) return;
+  if (els.dialog.open || els.movementDialog.open || els.costingDialog.open || els.supplierOrderDialog.open) return;
   items = await loadItems();
   history = await loadHistory();
   costings = await loadCostings();
+  supplierOrderSettings = await loadSupplierOrderSettings();
   render();
 }
 
@@ -356,6 +372,45 @@ async function loadCostings() {
   return localCostings;
 }
 
+async function loadSupplierOrderSettings() {
+  const localSettings = readLocalSupplierOrderSettings();
+
+  if (supabaseClient && !currentUser) return [];
+
+  if (supabaseClient && currentUser) {
+    const { data, error } = await supabaseClient
+      .from("supplier_order_settings")
+      .select("*")
+      .order("supplier", { ascending: true });
+
+    if (error?.code === "42P01" || error?.code === "PGRST205") return localSettings;
+    if (error) {
+      console.warn(`業者発注設定の読み込みに失敗しました: ${error.message}`);
+      return localSettings;
+    }
+
+    if (data.length === 0 && localSettings.length > 0) {
+      supplierOrderSettings = localSettings;
+      await saveSupplierOrderSettings();
+      return localSettings;
+    }
+
+    const cloudSettings = data.map(fromDbSupplierOrderSetting).map(normalizeSupplierOrderSetting);
+    localStorage.setItem(SUPPLIER_ORDER_SETTINGS_KEY, JSON.stringify(cloudSettings));
+    return cloudSettings;
+  }
+
+  return localSettings;
+}
+
+function readLocalSupplierOrderSettings() {
+  try {
+    return JSON.parse(localStorage.getItem(SUPPLIER_ORDER_SETTINGS_KEY) || "[]").map(normalizeSupplierOrderSetting);
+  } catch {
+    return [];
+  }
+}
+
 function readLocalCostings() {
   try {
     return normalizeCostingsList(JSON.parse(localStorage.getItem(COSTINGS_KEY) || "[]"));
@@ -411,6 +466,19 @@ function normalizeIngredient(ingredient) {
     unitPrice: Number(ingredient.unitPrice) || 0,
     cost: Number(ingredient.cost) || 0,
     memo: ingredient.memo ?? ""
+  };
+}
+
+function normalizeSupplierOrderSetting(setting) {
+  const supplier = String(setting.supplier ?? "").trim();
+  return {
+    supplier,
+    method: setting.method || "LINE",
+    contact: setting.contact ?? "",
+    cutoff: setting.cutoff ?? "",
+    deliveryDays: setting.deliveryDays ?? "",
+    minimumOrder: setting.minimumOrder ?? "",
+    memo: setting.memo ?? ""
   };
 }
 
@@ -528,6 +596,27 @@ async function saveCostings() {
   }
 }
 
+async function saveSupplierOrderSettings() {
+  const normalizedSettings = supplierOrderSettings
+    .map(normalizeSupplierOrderSetting)
+    .filter((setting) => setting.supplier);
+  supplierOrderSettings = normalizedSettings;
+  localStorage.setItem(SUPPLIER_ORDER_SETTINGS_KEY, JSON.stringify(normalizedSettings));
+
+  if (supabaseClient && currentUser) {
+    if (normalizedSettings.length === 0) return;
+    const { error } = await supabaseClient
+      .from("supplier_order_settings")
+      .upsert(normalizedSettings.map(toDbSupplierOrderSetting), { onConflict: "supplier" });
+
+    if (error?.code === "42P01" || error?.code === "PGRST205") {
+      alert("業者発注設定を全端末で共有するには、Supabaseで supplier_order_settings テーブル作成SQLを実行してください。");
+      return;
+    }
+    if (error) alert(`業者発注設定の保存に失敗しました: ${error.message}`);
+  }
+}
+
 function fromDbItem(row) {
   return {
     id: row.id,
@@ -624,6 +713,31 @@ function toDbCosting(costing, includeSortOrder = true) {
 
   if (includeSortOrder) row.sort_order = normalized.sortOrder;
   return row;
+}
+
+function fromDbSupplierOrderSetting(row) {
+  return {
+    supplier: row.supplier,
+    method: row.method,
+    contact: row.contact,
+    cutoff: row.cutoff,
+    deliveryDays: row.delivery_days,
+    minimumOrder: row.minimum_order,
+    memo: row.memo
+  };
+}
+
+function toDbSupplierOrderSetting(setting) {
+  const normalized = normalizeSupplierOrderSetting(setting);
+  return {
+    supplier: normalized.supplier,
+    method: normalized.method,
+    contact: normalized.contact,
+    cutoff: normalized.cutoff,
+    delivery_days: normalized.deliveryDays,
+    minimum_order: normalized.minimumOrder,
+    memo: normalized.memo
+  };
 }
 
 function render() {
@@ -905,6 +1019,21 @@ function getOrderRows() {
     }));
 }
 
+function getSupplierOrderSetting(supplier) {
+  return supplierOrderSettings.find((setting) => setting.supplier === supplier) ?? null;
+}
+
+function formatSupplierOrderDetails(setting) {
+  if (!setting) return "発注設定なし";
+  return [
+    setting.method ? `方法: ${setting.method}` : "",
+    setting.cutoff ? `締切: ${setting.cutoff}` : "",
+    setting.deliveryDays ? `納品: ${setting.deliveryDays}` : "",
+    setting.minimumOrder ? `注意: ${setting.minimumOrder}` : "",
+    setting.contact ? `連絡先: ${setting.contact}` : ""
+  ].filter(Boolean).join(" / ") || "発注設定なし";
+}
+
 function renderOrders() {
   const rows = getOrderRows();
   els.orderList.innerHTML = "";
@@ -921,14 +1050,17 @@ function renderOrders() {
   });
 
   grouped.forEach((supplierRows, supplier) => {
+    const setting = getSupplierOrderSetting(supplier);
     const section = document.createElement("article");
     section.className = "order-group";
     section.innerHTML = `
       <div class="order-group-header">
         <div>
           <h3>${escapeHtml(supplier)}</h3>
-          <p>${supplierRows.length}件</p>
+          <p>${supplierRows.length}件 / ${escapeHtml(formatSupplierOrderDetails(setting))}</p>
+          ${setting?.memo ? `<p>${escapeHtml(setting.memo)}</p>` : ""}
         </div>
+        <button class="ghost-button" data-supplier-order-action="edit" data-supplier="${escapeHtml(supplier)}" type="button">設定</button>
       </div>
       <div class="table-wrap compact">
         <table>
@@ -981,10 +1113,18 @@ function buildOrderText(rows = getOrderRows()) {
 
   const date = new Date().toLocaleDateString("ja-JP");
   return [...grouped.entries()].map(([supplier, supplierRows]) => {
+    const setting = getSupplierOrderSetting(supplier);
+    const detailLines = setting ? [
+      setting.method ? `発注方法: ${setting.method}` : "",
+      setting.cutoff ? `締切: ${setting.cutoff}` : "",
+      setting.deliveryDays ? `納品: ${setting.deliveryDays}` : "",
+      setting.minimumOrder ? `注意: ${setting.minimumOrder}` : "",
+      setting.memo ? `メモ: ${setting.memo}` : ""
+    ].filter(Boolean) : [];
     const lines = supplierRows
       .filter((row) => Number(row.orderQuantity) > 0)
       .map((row) => `${row.item.name}　${formatQuantity(row.orderQuantity)}${row.item.unit}${row.item.note ? `　${row.item.note}` : ""}`);
-    return [`【${supplier} 発注】`, date, ...lines].join("\n");
+    return [`【${supplier} 発注】`, date, ...detailLines, ...lines].join("\n");
   }).join("\n\n");
 }
 
@@ -1009,9 +1149,11 @@ function openOrderMail() {
     return;
   }
   const supplier = els.orderSupplierFilter.value || "業者別";
+  const setting = els.orderSupplierFilter.value ? getSupplierOrderSetting(els.orderSupplierFilter.value) : null;
   const subject = encodeURIComponent(`THE PORT 発注 ${supplier}`);
   const body = encodeURIComponent(text);
-  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  const contact = setting?.method === "メール" && setting.contact.includes("@") ? setting.contact : "";
+  window.location.href = `mailto:${encodeURIComponent(contact)}?subject=${subject}&body=${body}`;
 }
 
 function exportOrderCsv() {
@@ -1052,6 +1194,73 @@ function markOrderDone() {
   orderQuantities = {};
   els.orderTextPreview.value = text;
   alert("発注内容を確認しました。納品時は在庫管理の「仕入」で在庫を増やしてください。");
+  renderOrders();
+}
+
+function openSupplierOrderSettings(supplier = "") {
+  const selectedSupplier = supplier || els.orderSupplierFilter.value || "";
+  const setting = getSupplierOrderSetting(selectedSupplier);
+  els.supplierOrderForm.reset();
+  els.supplierOrderName.value = selectedSupplier;
+  els.supplierOrderMethod.value = setting?.method ?? "LINE";
+  els.supplierOrderContact.value = setting?.contact ?? "";
+  els.supplierOrderCutoff.value = setting?.cutoff ?? "";
+  els.supplierOrderDeliveryDays.value = setting?.deliveryDays ?? "";
+  els.supplierOrderMinimum.value = setting?.minimumOrder ?? "";
+  els.supplierOrderMemo.value = setting?.memo ?? "";
+  els.supplierOrderDialog.showModal();
+  els.supplierOrderName.focus();
+}
+
+function closeSupplierOrderSettings() {
+  els.supplierOrderDialog.close();
+}
+
+async function handleSupplierOrderSettingsSubmit(event) {
+  event.preventDefault();
+  const setting = normalizeSupplierOrderSetting({
+    supplier: els.supplierOrderName.value,
+    method: els.supplierOrderMethod.value,
+    contact: els.supplierOrderContact.value.trim(),
+    cutoff: els.supplierOrderCutoff.value.trim(),
+    deliveryDays: els.supplierOrderDeliveryDays.value.trim(),
+    minimumOrder: els.supplierOrderMinimum.value.trim(),
+    memo: els.supplierOrderMemo.value.trim()
+  });
+  if (!setting.supplier) {
+    alert("業者名を入力してください。");
+    return;
+  }
+
+  supplierOrderSettings = [
+    ...supplierOrderSettings.filter((entry) => entry.supplier !== setting.supplier),
+    setting
+  ].sort((a, b) => a.supplier.localeCompare(b.supplier, "ja"));
+
+  await saveSupplierOrderSettings();
+  closeSupplierOrderSettings();
+  renderOrders();
+}
+
+async function deleteSupplierOrderSettings() {
+  const supplier = els.supplierOrderName.value.trim();
+  if (!supplier) return;
+  if (!confirm(`${supplier} の発注設定を削除しますか？`)) return;
+
+  supplierOrderSettings = supplierOrderSettings.filter((setting) => setting.supplier !== supplier);
+  localStorage.setItem(SUPPLIER_ORDER_SETTINGS_KEY, JSON.stringify(supplierOrderSettings));
+
+  if (supabaseClient && currentUser) {
+    const { error } = await supabaseClient
+      .from("supplier_order_settings")
+      .delete()
+      .eq("supplier", supplier);
+    if (error && error.code !== "42P01" && error.code !== "PGRST205") {
+      alert(`業者発注設定の削除に失敗しました: ${error.message}`);
+    }
+  }
+
+  closeSupplierOrderSettings();
   renderOrders();
 }
 
@@ -1961,9 +2170,14 @@ els.addIngredientRow.addEventListener("click", () => {
 els.exportCostingCsv.addEventListener("click", exportCostingCsv);
 els.copyCheckUrl.addEventListener("click", copyCheckUrl);
 els.copyOrderText.addEventListener("click", copyOrderText);
+els.openSupplierOrderSettings.addEventListener("click", () => openSupplierOrderSettings());
+els.openSupplierOrderSettingsTop.addEventListener("click", () => openSupplierOrderSettings());
 els.openOrderMail.addEventListener("click", openOrderMail);
 els.exportOrderCsv.addEventListener("click", exportOrderCsv);
 els.markOrderDone.addEventListener("click", markOrderDone);
+els.cancelSupplierOrderSettings.addEventListener("click", closeSupplierOrderSettings);
+els.supplierOrderForm.addEventListener("submit", handleSupplierOrderSettingsSubmit);
+els.deleteSupplierOrderSettings.addEventListener("click", deleteSupplierOrderSettings);
 els.importCsv.addEventListener("change", (event) => {
   const [file] = event.target.files;
   if (file) importCsv(file);
@@ -2082,6 +2296,12 @@ els.orderList.addEventListener("input", (event) => {
   const { orderId } = event.target.dataset;
   orderQuantities[orderId] = Number(event.target.value) || 0;
   els.orderTextPreview.value = buildOrderText();
+});
+
+els.orderList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-supplier-order-action]");
+  if (!button) return;
+  openSupplierOrderSettings(button.dataset.supplier);
 });
 
 els.table.addEventListener("click", (event) => {

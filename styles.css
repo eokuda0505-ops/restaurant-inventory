@@ -902,6 +902,10 @@ dialog::backdrop {
   gap: 14px;
 }
 
+.form-wide {
+  grid-column: 1 / -1;
+}
+
 .form-grid.single {
   grid-template-columns: 1fr;
 }
