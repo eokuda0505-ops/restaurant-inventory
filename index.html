@@ -3,23 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>THE PORT 在庫管理</title>
-  <link rel="stylesheet" href="styles.css?v=20260806-supplier-order-settings-visible">
+  <title>店舗在庫管理</title>
+  <link rel="stylesheet" href="styles.css?v=20261003-language-switcher">
 </head>
 <body>
   <main class="app-shell">
     <header class="topbar">
-      <div>
-        <p class="eyebrow">THE PORT Inventory</p>
-        <h1 id="appTitle">THE PORT 在庫管理</h1>
+      <div class="brand-block">
+        <img class="brand-logo" id="brandLogo" alt="" hidden>
+        <div>
+          <p class="eyebrow" id="brandEyebrow">Restaurant Inventory</p>
+          <h1 id="appTitle">店舗在庫管理</h1>
+        </div>
       </div>
       <div class="top-actions">
+        <label class="language-control" for="languageSelect">
+          言語
+          <select id="languageSelect" aria-label="言語">
+            <option value="ja">日本語</option>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+          </select>
+        </label>
         <div class="auth-panel" id="authPanel">
           <input id="loginEmail" type="email" autocomplete="email" placeholder="メール">
           <input id="loginPassword" type="password" autocomplete="current-password" placeholder="パスワード">
           <button class="ghost-button" id="loginButton" type="button">ログイン</button>
           <button class="ghost-button" id="logoutButton" type="button" hidden>ログアウト</button>
           <span id="authStatus">未接続</span>
+        </div>
+        <div class="store-control" id="storeControl" hidden>
+          <label for="storeSelector">店舗</label>
+          <select id="storeSelector" aria-label="利用店舗"></select>
+          <button class="ghost-button" id="openStoreSettings" type="button" hidden>店舗設定</button>
         </div>
         <button class="icon-button" id="refreshData" title="最新データを取得" aria-label="最新データを取得">
           <span aria-hidden="true">↻</span>
@@ -253,7 +269,7 @@
       <section class="costing-area">
         <div class="inventory-toolbar">
           <div>
-            <h2>THE PORT原価</h2>
+            <h2 id="costingAreaTitle">メニュー原価</h2>
             <p id="costingResultCount">0件を表示中</p>
           </div>
           <select id="costingSortSelect" aria-label="原価計算の並び替え">
@@ -392,6 +408,58 @@
     </form>
   </dialog>
 
+  <dialog id="storeSettingsDialog">
+    <form method="dialog" class="item-form" id="storeSettingsForm">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">管理者設定</p>
+          <h2>店舗設定</h2>
+        </div>
+        <button class="icon-button" value="cancel" title="閉じる" aria-label="閉じる">×</button>
+      </div>
+      <div class="form-grid">
+        <label>
+          店舗名
+          <input id="settingsStoreName" required maxlength="80" placeholder="例: ○○食堂 渋谷店">
+        </label>
+        <label>
+          画面名
+          <input id="settingsAppName" required maxlength="40" placeholder="例: 在庫管理">
+        </label>
+        <label>
+          会社・ブランド名
+          <input id="settingsBusinessName" required maxlength="80" placeholder="例: ○○フードサービス">
+        </label>
+        <label>
+          管理者メール
+          <input id="settingsManagerEmail" type="email" maxlength="120" placeholder="例: manager@example.com">
+        </label>
+        <label class="form-wide">
+          ロゴ画像URL（任意）
+          <input id="settingsLogoUrl" type="url" maxlength="500" placeholder="https://...">
+        </label>
+        <label class="form-wide">
+          カテゴリ（1行に1つ）
+          <textarea id="settingsCategories" rows="5" required></textarea>
+        </label>
+        <label class="form-wide">
+          保管場所（1行に1つ）
+          <textarea id="settingsLocations" rows="6" required></textarea>
+        </label>
+        <label class="form-wide">
+          単位（1行に1つ）
+          <textarea id="settingsUnits" rows="5" required></textarea>
+        </label>
+      </div>
+      <p class="form-help">この設定は現在選択している店舗だけに反映されます。</p>
+      <div class="modal-actions">
+        <button class="ghost-button" type="button" id="openQrCodes">QR印刷</button>
+        <button class="ghost-button" value="cancel" type="button" id="cancelStoreSettings">キャンセル</button>
+        <button class="primary-button" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="supplierOrderDialog">
     <form method="dialog" class="item-form" id="supplierOrderForm">
       <div class="modal-header">
@@ -452,7 +520,7 @@
       <div class="form-grid">
         <label>
           メニュー名
-          <input id="costingName" required maxlength="80" placeholder="例: THE PORTバーガー">
+          <input id="costingName" required maxlength="80" placeholder="例: ハンバーガー、サルサソース">
         </label>
         <label>
           カテゴリー
@@ -502,6 +570,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
-  <script src="app.js?v=20260806-supplier-order-settings-visible"></script>
+  <script src="app.js?v=20261003-language-switcher"></script>
 </body>
 </html>

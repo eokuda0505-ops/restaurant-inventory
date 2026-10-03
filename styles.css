@@ -30,7 +30,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -66,7 +67,7 @@ p {
 
 h1 {
   margin-bottom: 0;
-  font-size: clamp(2rem, 4vw, 3.2rem);
+  font-size: 3.2rem;
   line-height: 1.05;
 }
 
@@ -80,6 +81,30 @@ h2 {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+.brand-block,
+.store-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+}
+
+.store-control label {
+  display: block;
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.store-control select {
+  width: min(210px, 28vw);
+  min-height: 38px;
 }
 
 .auth-panel {
@@ -173,6 +198,24 @@ h2 {
   background: var(--surface-soft);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.language-control {
+  display: grid;
+  gap: 4px;
+  min-width: 108px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.language-control select {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 700;
 }
 
 .tab-button {
@@ -280,18 +323,26 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
-  min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 0 10px;
+  padding: 10px;
   background: #fff;
   color: var(--text);
 }
 
+input,
+select {
+  min-height: 42px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 input:focus,
 select:focus,
+textarea:focus,
 button:focus-visible {
   outline: 3px solid rgba(25, 117, 107, 0.2);
   outline-offset: 2px;
@@ -970,7 +1021,7 @@ dialog::backdrop {
 
   .top-actions {
     display: grid;
-    grid-template-columns: 42px 42px 1fr;
+    grid-template-columns: 42px 42px 42px minmax(0, 1fr);
   }
 
   .auth-panel {
@@ -983,11 +1034,29 @@ dialog::backdrop {
     width: 100%;
   }
 
+  .store-control {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .store-control label {
+    grid-column: 1 / -1;
+  }
+
+  .store-control select {
+    width: 100%;
+  }
+
   .summary-grid,
   .form-grid,
   .costing-metrics,
   .costing-preview {
     grid-template-columns: 1fr;
+  }
+
+  h1 {
+    font-size: 2rem;
   }
 
   .inventory-toolbar {

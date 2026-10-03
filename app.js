@@ -3,11 +3,12 @@ const HISTORY_KEY = "restaurant-inventory-history-v3";
 const SUPPLIER_KEY = "restaurant-inventory-suppliers-v1";
 const COSTINGS_KEY = "restaurant-inventory-costings-v1";
 const SUPPLIER_ORDER_SETTINGS_KEY = "restaurant-inventory-supplier-order-settings-v1";
-const CHECK_URL_MANAGER_EMAIL = "okuda@anothertable.co.jp";
+const SELECTED_STORE_KEY = "restaurant-inventory-selected-store-v1";
+const LANGUAGE_KEY = "restaurant-inventory-language-v1";
 
-const categoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類", "仕込み品"];
+const defaultCategoryOptions = ["野菜", "果物", "肉類", "魚類", "冷凍物", "乾物", "資材", "乳製品、チーズ", "酒類", "仕込み品"];
 const costingCategoryOptions = ["FOOD", "DESERT", "DRINK", "PREP"];
-const storageLocationOptions = [
+const defaultStorageLocationOptions = [
   "冷蔵庫１",
   "冷蔵庫２",
   "冷蔵庫３",
@@ -21,6 +22,25 @@ const storageLocationOptions = [
   "ワイン冷蔵",
   "ドリンク冷蔵"
 ];
+const defaultUnitOptions = ["個", "玉", "本", "pac", "缶", "ケース", "食分", "g", "kg", "ml", "L"];
+const defaultStoreSettings = {
+  appName: "在庫管理",
+  businessName: "店舗",
+  logoUrl: "",
+  managerEmail: "",
+  categories: defaultCategoryOptions,
+  storageLocations: defaultStorageLocationOptions,
+  units: defaultUnitOptions
+};
+
+let categoryOptions = [...defaultCategoryOptions];
+let storageLocationOptions = [...defaultStorageLocationOptions];
+let unitOptions = [...defaultUnitOptions];
+let storeSettings = { ...defaultStoreSettings };
+let availableStores = [];
+let currentStore = null;
+let currentStoreRole = "staff";
+let tenancyEnabled = false;
 
 let items = [];
 let history = [];
@@ -32,6 +52,304 @@ let editingCostingId = null;
 let supabaseClient = null;
 let currentUser = null;
 let syncTimer = null;
+let saveInProgress = 0;
+let suppressAutoRefreshUntil = 0;
+let currentLanguage = localStorage.getItem(LANGUAGE_KEY) || "ja";
+
+const uiText = {
+  en: {
+    "言語": "Language",
+    "日本語": "Japanese",
+    "ログイン": "Log in",
+    "ログアウト": "Log out",
+    "メール": "Email",
+    "電話": "Phone",
+    "その他": "Other",
+    "閉じる": "Close",
+    "未接続": "Disconnected",
+    "未ログイン": "Not logged in",
+    "Supabase未設定": "Supabase not set",
+    "店舗": "Store",
+    "店舗設定": "Store settings",
+    "最新データを取得": "Refresh data",
+    "CSV出力": "Export CSV",
+    "CSV取込": "Import CSV",
+    "食材・資材を追加": "Add item",
+    "食材・資材を編集": "Edit item",
+    "在庫管理": "Inventory",
+    "冷蔵庫チェック": "Cold storage check",
+    "発注": "Orders",
+    "原価計算": "Costing",
+    "登録品目": "Items",
+    "総在庫量": "Total stock",
+    "低在庫": "Low stock",
+    "在庫金額": "Inventory value",
+    "絞り込み": "Filters",
+    "解除": "Clear",
+    "検索": "Search",
+    "カテゴリ": "Category",
+    "カテゴリー": "Category",
+    "業者": "Supplier",
+    "業者追加": "Add supplier",
+    "業者削除": "Delete supplier",
+    "表示": "View",
+    "店舗在庫一覧": "Inventory list",
+    "商品名": "Item name",
+    "分類": "Category",
+    "在庫量": "Stock",
+    "現在庫": "Current stock",
+    "適正在庫": "Ideal stock",
+    "適正在庫 平日": "Ideal weekday stock",
+    "適正在庫 土日": "Ideal weekend stock",
+    "発注点": "Reorder point",
+    "単価": "Unit price",
+    "g単価": "g price",
+    "操作": "Actions",
+    "チェック場所": "Check location",
+    "保管場所": "Storage location",
+    "この場所のURLをコピー": "Copy this location URL",
+    "チェック対象がありません": "No check items",
+    "商品編集で「保管場所」を入れると、この画面に表示されます。": "Items appear here after a storage location is set.",
+    "発注条件": "Order conditions",
+    "平日": "Weekday",
+    "土日": "Weekend",
+    "発注文をコピー": "Copy order text",
+    "業者設定": "Supplier settings",
+    "メール下書き": "Email draft",
+    "発注CSV": "Order CSV",
+    "発注済みにする": "Mark ordered",
+    "業者別 発注候補": "Order suggestions by supplier",
+    "発注候補がありません": "No order suggestions",
+    "発注点を下回った商品がここに表示されます。": "Items below reorder point appear here.",
+    "メニュー": "Menu",
+    "原価率": "Cost rate",
+    "メニュー原価を追加": "Add menu costing",
+    "メニュー原価を編集": "Edit menu costing",
+    "原価一覧CSV": "Costing CSV",
+    "メニュー原価": "Menu costing",
+    "メニュー原価がありません": "No menu costings",
+    "「メニュー原価を追加」から、料理やドリンクごとの材料を登録してください。": "Add ingredients for dishes and drinks from Add menu costing.",
+    "個別商品名": "Item name",
+    "管理番号": "SKU",
+    "業者名": "Supplier",
+    "単位": "Unit",
+    "メモ": "Memo",
+    "キャンセル": "Cancel",
+    "保存": "Save",
+    "在庫を更新": "Update stock",
+    "数量": "Quantity",
+    "内容": "Details",
+    "反映": "Apply",
+    "管理者設定": "Admin settings",
+    "店舗名": "Store name",
+    "画面名": "Screen name",
+    "会社・ブランド名": "Company / Brand",
+    "管理者メール": "Admin email",
+    "ロゴ画像URL（任意）": "Logo image URL (optional)",
+    "カテゴリ（1行に1つ）": "Categories (one per line)",
+    "保管場所（1行に1つ）": "Storage locations (one per line)",
+    "単位（1行に1つ）": "Units (one per line)",
+    "この設定は現在選択している店舗だけに反映されます。": "These settings apply only to the selected store.",
+    "QR印刷": "Print QR",
+    "業者発注設定": "Supplier order settings",
+    "発注方法": "Order method",
+    "連絡先": "Contact",
+    "締切時間": "Cutoff time",
+    "納品曜日": "Delivery days",
+    "最小発注・注意": "Minimum / Notes",
+    "発注メモ": "Order memo",
+    "設定削除": "Delete settings",
+    "メニュー名": "Menu name",
+    "販売価格": "Sale price",
+    "仕込み単位 / 仕上がり量g": "Batch size / finished grams",
+    "使用材料": "Ingredients",
+    "材料を追加": "Add ingredient",
+    "1食/g単価": "Per serving / g price",
+    "1食原価": "Cost per serving",
+    "仕上がり量": "Finished amount",
+    "総原価": "Total cost",
+    "在庫反映": "Inventory sync",
+    "粗利": "Gross profit",
+    "材料が登録されていません。": "No ingredients registered.",
+    "材料名未設定": "Ingredient name unset",
+    "原価": "Cost",
+    "指定順": "Manual order",
+    "商品名順": "Item name order",
+    "在庫が少ない順": "Lowest stock first",
+    "在庫が多い順": "Highest stock first",
+    "在庫金額が高い順": "Highest value first",
+    "メニュー名順": "Menu name order",
+    "原価が高い順": "Highest cost first",
+    "原価率が高い順": "Highest cost rate first",
+    "すべて": "All",
+    "低在庫のみ": "Low stock only",
+    "在庫切れのみ": "Out of stock only",
+    "35%以上": "35% or higher",
+    "販売価格未設定": "Sale price not set",
+    "未設定": "Unset",
+    "上へ": "Up",
+    "下へ": "Down",
+    "数を入力": "Set number",
+    "使用": "Use",
+    "納品": "Receive",
+    "仕入れを追加": "Add purchase",
+    "使用分を減らす": "Use stock",
+    "設定": "Settings",
+    "発注設定なし": "No order settings",
+    "連絡先": "Contact",
+    "方法": "Method",
+    "締切": "Cutoff",
+    "納品": "Delivery",
+    "注意": "Note",
+    "推奨": "Suggested"
+  },
+  es: {
+    "言語": "Idioma",
+    "日本語": "Japonés",
+    "ログイン": "Iniciar sesión",
+    "ログアウト": "Cerrar sesión",
+    "メール": "Email",
+    "電話": "Teléfono",
+    "その他": "Otro",
+    "閉じる": "Cerrar",
+    "未接続": "Sin conexión",
+    "未ログイン": "Sin iniciar sesión",
+    "Supabase未設定": "Supabase no configurado",
+    "店舗": "Tienda",
+    "店舗設定": "Ajustes de tienda",
+    "最新データを取得": "Actualizar datos",
+    "CSV出力": "Exportar CSV",
+    "CSV取込": "Importar CSV",
+    "食材・資材を追加": "Agregar producto",
+    "食材・資材を編集": "Editar producto",
+    "在庫管理": "Inventario",
+    "冷蔵庫チェック": "Revisión de frío",
+    "発注": "Pedidos",
+    "原価計算": "Costos",
+    "登録品目": "Productos",
+    "総在庫量": "Stock total",
+    "低在庫": "Stock bajo",
+    "在庫金額": "Valor de inventario",
+    "絞り込み": "Filtros",
+    "解除": "Limpiar",
+    "検索": "Buscar",
+    "カテゴリ": "Categoría",
+    "カテゴリー": "Categoría",
+    "業者": "Proveedor",
+    "業者追加": "Agregar proveedor",
+    "業者削除": "Eliminar proveedor",
+    "表示": "Vista",
+    "店舗在庫一覧": "Lista de inventario",
+    "商品名": "Producto",
+    "分類": "Categoría",
+    "在庫量": "Stock",
+    "現在庫": "Stock actual",
+    "適正在庫": "Stock ideal",
+    "適正在庫 平日": "Stock ideal entre semana",
+    "適正在庫 土日": "Stock ideal fin de semana",
+    "発注点": "Punto de pedido",
+    "単価": "Precio unitario",
+    "g単価": "Precio/g",
+    "操作": "Acciones",
+    "チェック場所": "Lugar de revisión",
+    "保管場所": "Ubicación",
+    "この場所のURLをコピー": "Copiar URL de este lugar",
+    "チェック対象がありません": "No hay productos para revisar",
+    "商品編集で「保管場所」を入れると、この画面に表示されます。": "Los productos aparecen aquí al definir su ubicación.",
+    "発注条件": "Condiciones de pedido",
+    "平日": "Entre semana",
+    "土日": "Fin de semana",
+    "発注文をコピー": "Copiar pedido",
+    "業者設定": "Ajustes de proveedor",
+    "メール下書き": "Borrador de email",
+    "発注CSV": "CSV de pedido",
+    "発注済みにする": "Marcar pedido",
+    "業者別 発注候補": "Sugerencias por proveedor",
+    "発注候補がありません": "No hay sugerencias de pedido",
+    "発注点を下回った商品がここに表示されます。": "Aquí aparecen productos bajo el punto de pedido.",
+    "メニュー": "Menú",
+    "原価率": "Porcentaje de costo",
+    "メニュー原価を追加": "Agregar costo de menú",
+    "メニュー原価を編集": "Editar costo de menú",
+    "原価一覧CSV": "CSV de costos",
+    "メニュー原価": "Costos de menú",
+    "メニュー原価がありません": "No hay costos de menú",
+    "「メニュー原価を追加」から、料理やドリンクごとの材料を登録してください。": "Agrega ingredientes de platos y bebidas desde Agregar costo de menú.",
+    "個別商品名": "Nombre del producto",
+    "管理番号": "Código",
+    "業者名": "Proveedor",
+    "単位": "Unidad",
+    "メモ": "Nota",
+    "キャンセル": "Cancelar",
+    "保存": "Guardar",
+    "在庫を更新": "Actualizar stock",
+    "数量": "Cantidad",
+    "内容": "Detalle",
+    "反映": "Aplicar",
+    "管理者設定": "Ajustes de admin",
+    "店舗名": "Nombre de tienda",
+    "画面名": "Nombre de pantalla",
+    "会社・ブランド名": "Empresa / Marca",
+    "管理者メール": "Email de admin",
+    "ロゴ画像URL（任意）": "URL del logo (opcional)",
+    "カテゴリ（1行に1つ）": "Categorías (una por línea)",
+    "保管場所（1行に1つ）": "Ubicaciones (una por línea)",
+    "単位（1行に1つ）": "Unidades (una por línea)",
+    "この設定は現在選択している店舗だけに反映されます。": "Estos ajustes solo aplican a la tienda seleccionada.",
+    "QR印刷": "Imprimir QR",
+    "業者発注設定": "Ajustes de pedido",
+    "発注方法": "Método de pedido",
+    "連絡先": "Contacto",
+    "締切時間": "Hora límite",
+    "納品曜日": "Días de entrega",
+    "最小発注・注意": "Mínimo / Notas",
+    "発注メモ": "Nota del pedido",
+    "設定削除": "Eliminar ajustes",
+    "メニュー名": "Nombre del menú",
+    "販売価格": "Precio de venta",
+    "仕込み単位 / 仕上がり量g": "Tamaño de lote / gramos",
+    "使用材料": "Ingredientes",
+    "材料を追加": "Agregar ingrediente",
+    "1食/g単価": "Por porción / precio g",
+    "1食原価": "Costo por porción",
+    "仕上がり量": "Cantidad final",
+    "総原価": "Costo total",
+    "在庫反映": "Reflejo en inventario",
+    "粗利": "Ganancia bruta",
+    "材料が登録されていません。": "No hay ingredientes registrados.",
+    "材料名未設定": "Ingrediente sin nombre",
+    "原価": "Costo",
+    "指定順": "Orden manual",
+    "商品名順": "Por producto",
+    "在庫が少ない順": "Menor stock primero",
+    "在庫が多い順": "Mayor stock primero",
+    "在庫金額が高い順": "Mayor valor primero",
+    "メニュー名順": "Por menú",
+    "原価が高い順": "Mayor costo primero",
+    "原価率が高い順": "Mayor porcentaje primero",
+    "すべて": "Todo",
+    "低在庫のみ": "Solo stock bajo",
+    "在庫切れのみ": "Sin stock",
+    "35%以上": "35% o más",
+    "販売価格未設定": "Sin precio de venta",
+    "未設定": "Sin definir",
+    "上へ": "Arriba",
+    "下へ": "Abajo",
+    "数を入力": "Ingresar número",
+    "使用": "Usar",
+    "納品": "Recibir",
+    "仕入れを追加": "Agregar compra",
+    "使用分を減らす": "Reducir stock",
+    "設定": "Ajustes",
+    "発注設定なし": "Sin ajustes de pedido",
+    "連絡先": "Contacto",
+    "方法": "Método",
+    "締切": "Límite",
+    "納品": "Entrega",
+    "注意": "Nota",
+    "推奨": "Sugerido"
+  }
+};
 
 const yen = new Intl.NumberFormat("ja-JP", {
   style: "currency",
@@ -64,8 +382,142 @@ const quantityFormat = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 2
 });
 
+const textNodeOriginals = new WeakMap();
+const reverseUiText = Object.fromEntries(
+  Object.entries(uiText).flatMap(([, translations]) =>
+    Object.entries(translations).map(([ja, translated]) => [translated, ja])
+  )
+);
+
+const uiPlaceholders = {
+  en: {
+    "メール": "Email",
+    "パスワード": "Password",
+    "商品名・業者・保管場所": "Item, supplier, location",
+    "商品名・メモ": "Item or memo",
+    "商品名・業者・メモ": "Item, supplier, memo",
+    "メニュー名・メモ": "Menu or memo",
+    "例: トマト、牛肩ロース、割り箸": "Ex: Tomato, beef shoulder, chopsticks",
+    "例: VEG-TOMATO": "Ex: VEG-TOMATO",
+    "野菜は業者別管理に使用": "Used to manage vegetables by supplier",
+    "例: 冷蔵庫１、冷凍庫３": "Ex: Fridge 1, Freezer 3",
+    "例: 個、玉、pac": "Ex: pcs, head, pack",
+    "例: 1.14": "Ex: 1.14",
+    "例: 1.1433": "Ex: 1.1433",
+    "例: 田中青果から仕入れ、ランチで使用": "Ex: Purchased from supplier, used at lunch",
+    "例: ○○食堂 渋谷店": "Ex: THE PORT",
+    "例: 在庫管理": "Ex: Inventory",
+    "例: ○○フードサービス": "Ex: THE PORT",
+    "例: manager@example.com": "Ex: manager@example.com",
+    "例: タカナシ": "Ex: Takanashi",
+    "メール、電話番号、URLなど": "Email, phone number, URL, etc.",
+    "例: 前日15時、当日10時": "Ex: Previous day 15:00",
+    "例: 月水金、翌日納品": "Ex: Mon/Wed/Fri, next-day delivery",
+    "例: ケース単位、前日発注のみ": "Ex: Case orders only",
+    "発注文に表示したい注意事項": "Notes to show in order text",
+    "例: ハンバーガー、サルサソース": "Ex: Burger, salsa sauce",
+    "仕込み品は空欄でOK": "Leave blank for prep items",
+    "例: ランチメニュー、季節限定": "Ex: Lunch menu, seasonal"
+  },
+  es: {
+    "メール": "Email",
+    "パスワード": "Contraseña",
+    "商品名・業者・保管場所": "Producto, proveedor, ubicación",
+    "商品名・メモ": "Producto o nota",
+    "商品名・業者・メモ": "Producto, proveedor, nota",
+    "メニュー名・メモ": "Menú o nota",
+    "例: トマト、牛肩ロース、割り箸": "Ej: Tomate, carne, palillos",
+    "例: VEG-TOMATO": "Ej: VEG-TOMATO",
+    "野菜は業者別管理に使用": "Para gestionar verduras por proveedor",
+    "例: 冷蔵庫１、冷凍庫３": "Ej: Refrigerador 1, Congelador 3",
+    "例: 個、玉、pac": "Ej: unidad, pieza, pack",
+    "例: 1.14": "Ej: 1.14",
+    "例: 1.1433": "Ej: 1.1433",
+    "例: 田中青果から仕入れ、ランチで使用": "Ej: Compra a proveedor, uso en almuerzo",
+    "例: ○○食堂 渋谷店": "Ej: THE PORT",
+    "例: 在庫管理": "Ej: Inventario",
+    "例: ○○フードサービス": "Ej: THE PORT",
+    "例: manager@example.com": "Ej: manager@example.com",
+    "例: タカナシ": "Ej: Takanashi",
+    "メール、電話番号、URLなど": "Email, teléfono, URL, etc.",
+    "例: 前日15時、当日10時": "Ej: Día anterior 15:00",
+    "例: 月水金、翌日納品": "Ej: Lun/Mié/Vie, entrega al día siguiente",
+    "例: ケース単位、前日発注のみ": "Ej: Solo por caja",
+    "発注文に表示したい注意事項": "Notas para mostrar en el pedido",
+    "例: ハンバーガー、サルサソース": "Ej: Hamburguesa, salsa",
+    "仕込み品は空欄でOK": "Puede quedar vacío para preparación",
+    "例: ランチメニュー、季節限定": "Ej: Menú de almuerzo, temporada"
+  }
+};
+
+function t(text) {
+  return uiText[currentLanguage]?.[text] ?? text;
+}
+
+function preserveSpacing(source, translated) {
+  const leading = source.match(/^\s*/)?.[0] ?? "";
+  const trailing = source.match(/\s*$/)?.[0] ?? "";
+  return `${leading}${translated}${trailing}`;
+}
+
+function translateTextNode(node) {
+  const raw = node.textContent;
+  const key = textNodeOriginals.get(node) ?? reverseUiText[raw.trim()] ?? raw.trim();
+  if (!key) return;
+  const translated = currentLanguage === "ja" ? key : t(key);
+  if (translated !== key || uiText.en[key] || uiText.es[key]) {
+    textNodeOriginals.set(node, key);
+    node.textContent = preserveSpacing(raw, translated);
+  }
+}
+
+function translateElementText(root = document.body) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      if (["SCRIPT", "STYLE", "TEXTAREA"].includes(parent.tagName)) return NodeFilter.FILTER_REJECT;
+      if (!node.textContent.trim()) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(translateTextNode);
+}
+
+function translatePlaceholders(root = document) {
+  root.querySelectorAll("[placeholder]").forEach((element) => {
+    const original = element.dataset.placeholderJa ?? reverseUiText[element.placeholder] ?? element.placeholder;
+    element.dataset.placeholderJa = original;
+    element.placeholder = currentLanguage === "ja" ? original : (uiPlaceholders[currentLanguage]?.[original] ?? original);
+  });
+}
+
+function applyLanguage(root = document.body) {
+  document.documentElement.lang = currentLanguage;
+  if (els.languageSelect) els.languageSelect.value = currentLanguage;
+  translateElementText(root);
+  translatePlaceholders(root instanceof Document ? root : document);
+  updateAppTitle();
+}
+
+function changeLanguage(language) {
+  currentLanguage = ["ja", "en", "es"].includes(language) ? language : "ja";
+  localStorage.setItem(LANGUAGE_KEY, currentLanguage);
+  render();
+}
+
 const els = {
   appTitle: document.querySelector("#appTitle"),
+  brandEyebrow: document.querySelector("#brandEyebrow"),
+  brandLogo: document.querySelector("#brandLogo"),
+  languageSelect: document.querySelector("#languageSelect"),
+  storeControl: document.querySelector("#storeControl"),
+  storeSelector: document.querySelector("#storeSelector"),
+  openStoreSettings: document.querySelector("#openStoreSettings"),
+  costingAreaTitle: document.querySelector("#costingAreaTitle"),
   summaryGrid: document.querySelector("#summaryGrid"),
   totalItems: document.querySelector("#totalItems"),
   totalStock: document.querySelector("#totalStock"),
@@ -165,7 +617,19 @@ const els = {
   supplierOrderMinimum: document.querySelector("#supplierOrderMinimum"),
   supplierOrderMemo: document.querySelector("#supplierOrderMemo"),
   cancelSupplierOrderSettings: document.querySelector("#cancelSupplierOrderSettings"),
-  deleteSupplierOrderSettings: document.querySelector("#deleteSupplierOrderSettings")
+  deleteSupplierOrderSettings: document.querySelector("#deleteSupplierOrderSettings"),
+  storeSettingsDialog: document.querySelector("#storeSettingsDialog"),
+  storeSettingsForm: document.querySelector("#storeSettingsForm"),
+  settingsStoreName: document.querySelector("#settingsStoreName"),
+  settingsAppName: document.querySelector("#settingsAppName"),
+  settingsBusinessName: document.querySelector("#settingsBusinessName"),
+  settingsManagerEmail: document.querySelector("#settingsManagerEmail"),
+  settingsLogoUrl: document.querySelector("#settingsLogoUrl"),
+  settingsCategories: document.querySelector("#settingsCategories"),
+  settingsLocations: document.querySelector("#settingsLocations"),
+  settingsUnits: document.querySelector("#settingsUnits"),
+  cancelStoreSettings: document.querySelector("#cancelStoreSettings"),
+  openQrCodes: document.querySelector("#openQrCodes")
 };
 
 function hasSupabaseConfig() {
@@ -213,7 +677,240 @@ function updateAuthView() {
 }
 
 function setAuthStatus(text) {
-  els.authStatus.textContent = text;
+  els.authStatus.textContent = text.includes("@") ? text : t(text);
+}
+
+function scopedStorageKey(baseKey) {
+  return currentStore?.id ? `${baseKey}:${currentStore.id}` : baseKey;
+}
+
+function scopeToCurrentStore(query) {
+  if (tenancyEnabled && currentStore?.id) return query.eq("store_id", currentStore.id);
+  return query;
+}
+
+function cleanSettingsList(value, fallback) {
+  const entries = Array.isArray(value) ? value : [];
+  const cleaned = [...new Set(entries.map((entry) => String(entry ?? "").trim()).filter(Boolean))];
+  return cleaned.length ? cleaned : [...fallback];
+}
+
+function settingsFromDb(row) {
+  return {
+    appName: row?.app_name || defaultStoreSettings.appName,
+    businessName: row?.business_name || currentStore?.name || defaultStoreSettings.businessName,
+    logoUrl: row?.logo_url || "",
+    managerEmail: row?.manager_email || "",
+    categories: cleanSettingsList(row?.categories, defaultCategoryOptions),
+    storageLocations: cleanSettingsList(row?.storage_locations, defaultStorageLocationOptions),
+    units: cleanSettingsList(row?.units, defaultUnitOptions)
+  };
+}
+
+function applyStoreSettings(settings = defaultStoreSettings) {
+  storeSettings = {
+    ...defaultStoreSettings,
+    ...settings,
+    categories: cleanSettingsList(settings.categories, defaultCategoryOptions),
+    storageLocations: cleanSettingsList(settings.storageLocations, defaultStorageLocationOptions),
+    units: cleanSettingsList(settings.units, defaultUnitOptions)
+  };
+  categoryOptions = [...storeSettings.categories];
+  storageLocationOptions = [...storeSettings.storageLocations];
+  unitOptions = [...storeSettings.units];
+  els.brandEyebrow.textContent = storeSettings.businessName;
+  els.brandLogo.hidden = !storeSettings.logoUrl;
+  if (storeSettings.logoUrl) els.brandLogo.src = storeSettings.logoUrl;
+  updateAppTitle();
+  renderStoreControls();
+}
+
+function renderStoreControls() {
+  const showControl = Boolean(currentUser && tenancyEnabled && currentStore);
+  els.storeControl.hidden = !showControl;
+  els.openStoreSettings.hidden = !showControl || currentStoreRole !== "admin";
+  els.addSupplier.hidden = showControl && currentStoreRole !== "admin";
+  els.deleteSupplier.hidden = showControl && currentStoreRole !== "admin";
+  els.openSupplierOrderSettings.hidden = showControl && currentStoreRole !== "admin";
+  els.openSupplierOrderSettingsTop.hidden = showControl && currentStoreRole !== "admin";
+  if (!showControl) return;
+
+  els.storeSelector.innerHTML = "";
+  availableStores.forEach((store) => {
+    const option = document.createElement("option");
+    option.value = store.id;
+    option.textContent = store.name;
+    els.storeSelector.append(option);
+  });
+  els.storeSelector.value = currentStore.id;
+  els.storeSelector.hidden = availableStores.length < 2;
+  els.storeControl.querySelector("label").hidden = availableStores.length < 2;
+}
+
+async function loadTenantContext() {
+  if (!supabaseClient || !currentUser) {
+    tenancyEnabled = false;
+    availableStores = [];
+    currentStore = null;
+    currentStoreRole = "staff";
+    applyStoreSettings(defaultStoreSettings);
+    return;
+  }
+
+  const { data: memberships, error: membershipError } = await supabaseClient
+    .from("store_members")
+    .select("store_id, role")
+    .eq("user_id", currentUser.id);
+
+  if (membershipError?.code === "42P01" || membershipError?.code === "PGRST205") {
+    tenancyEnabled = false;
+    availableStores = [];
+    currentStore = null;
+    currentStoreRole = "admin";
+    applyStoreSettings({
+      ...defaultStoreSettings,
+      businessName: "THE PORT",
+      managerEmail: "okuda@anothertable.co.jp"
+    });
+    return;
+  }
+  if (membershipError) throw membershipError;
+
+  tenancyEnabled = true;
+  if (!memberships?.length) {
+    availableStores = [];
+    currentStore = null;
+    applyStoreSettings(defaultStoreSettings);
+    alert("このユーザーに利用店舗が割り当てられていません。管理者へ連絡してください。");
+    return;
+  }
+
+  const roleByStore = new Map(memberships.map((membership) => [membership.store_id, membership.role]));
+  const { data: stores, error: storesError } = await supabaseClient
+    .from("stores")
+    .select("id, name, organization_id")
+    .in("id", memberships.map((membership) => membership.store_id))
+    .order("name", { ascending: true });
+  if (storesError) throw storesError;
+
+  availableStores = stores ?? [];
+  const params = new URLSearchParams(window.location.search);
+  const requestedStoreId = params.get("store") || localStorage.getItem(SELECTED_STORE_KEY);
+  currentStore = availableStores.find((store) => store.id === requestedStoreId) ?? availableStores[0];
+  currentStoreRole = roleByStore.get(currentStore.id) ?? "staff";
+  localStorage.setItem(SELECTED_STORE_KEY, currentStore.id);
+
+  const { data: settingsRow, error: settingsError } = await supabaseClient
+    .from("store_settings")
+    .select("*")
+    .eq("store_id", currentStore.id)
+    .maybeSingle();
+  if (settingsError) throw settingsError;
+  applyStoreSettings(settingsFromDb(settingsRow));
+}
+
+function updateAppTitle(view = document.querySelector(".tab-button.active")?.dataset.view || "inventory") {
+  const base = storeSettings.businessName || currentStore?.name || t("店舗");
+  const labels = {
+    inventory: storeSettings.appName === defaultStoreSettings.appName || !storeSettings.appName ? t("在庫管理") : storeSettings.appName,
+    check: t("冷蔵庫チェック"),
+    order: t("発注"),
+    costing: t("原価計算")
+  };
+  const title = `${base} ${labels[view]}`.trim();
+  els.appTitle.textContent = title;
+  document.title = title;
+  els.costingAreaTitle.textContent = `${base} ${t("原価")}`;
+}
+
+function parseSettingsLines(value) {
+  return [...new Set(String(value ?? "").split(/\r?\n|、/u).map((entry) => entry.trim()).filter(Boolean))];
+}
+
+function openStoreSettings() {
+  if (!currentStore || currentStoreRole !== "admin") return;
+  els.settingsStoreName.value = currentStore.name;
+  els.settingsAppName.value = storeSettings.appName;
+  els.settingsBusinessName.value = storeSettings.businessName;
+  els.settingsManagerEmail.value = storeSettings.managerEmail;
+  els.settingsLogoUrl.value = storeSettings.logoUrl;
+  els.settingsCategories.value = storeSettings.categories.join("\n");
+  els.settingsLocations.value = storeSettings.storageLocations.join("\n");
+  els.settingsUnits.value = storeSettings.units.join("\n");
+  els.storeSettingsDialog.showModal();
+  applyLanguage(els.storeSettingsDialog);
+}
+
+function closeStoreSettings() {
+  els.storeSettingsDialog.close();
+}
+
+function openQrCodes() {
+  const url = new URL("qr-codes.html", window.location.href);
+  url.searchParams.set("name", storeSettings.businessName);
+  url.searchParams.set("locations", storeSettings.storageLocations.join("|"));
+  if (currentStore?.id) url.searchParams.set("store", currentStore.id);
+  window.open(url.toString(), "_blank", "noopener");
+}
+
+async function handleStoreSettingsSubmit(event) {
+  event.preventDefault();
+  if (!supabaseClient || !currentStore || currentStoreRole !== "admin") return;
+
+  const nextSettings = {
+    appName: els.settingsAppName.value.trim(),
+    businessName: els.settingsBusinessName.value.trim(),
+    managerEmail: els.settingsManagerEmail.value.trim(),
+    logoUrl: els.settingsLogoUrl.value.trim(),
+    categories: parseSettingsLines(els.settingsCategories.value),
+    storageLocations: parseSettingsLines(els.settingsLocations.value),
+    units: parseSettingsLines(els.settingsUnits.value)
+  };
+  if (!nextSettings.categories.length || !nextSettings.storageLocations.length || !nextSettings.units.length) {
+    alert("カテゴリ・保管場所・単位は、それぞれ1つ以上入力してください。");
+    return;
+  }
+
+  const { error: storeError } = await supabaseClient
+    .from("stores")
+    .update({ name: els.settingsStoreName.value.trim() })
+    .eq("id", currentStore.id);
+  if (storeError) {
+    alert(`店舗名を保存できませんでした: ${storeError.message}`);
+    return;
+  }
+
+  const { error: settingsError } = await supabaseClient
+    .from("store_settings")
+    .update({
+      app_name: nextSettings.appName,
+      business_name: nextSettings.businessName,
+      manager_email: nextSettings.managerEmail || null,
+      logo_url: nextSettings.logoUrl || null,
+      categories: nextSettings.categories,
+      storage_locations: nextSettings.storageLocations,
+      units: nextSettings.units
+    })
+    .eq("store_id", currentStore.id);
+  if (settingsError) {
+    alert(`店舗設定を保存できませんでした: ${settingsError.message}`);
+    return;
+  }
+
+  currentStore = { ...currentStore, name: els.settingsStoreName.value.trim() };
+  availableStores = availableStores.map((store) => store.id === currentStore.id ? currentStore : store);
+  applyStoreSettings(nextSettings);
+  closeStoreSettings();
+  render();
+}
+
+async function switchStore(storeId) {
+  if (!availableStores.some((store) => store.id === storeId)) return;
+  localStorage.setItem(SELECTED_STORE_KEY, storeId);
+  const url = new URL(window.location.href);
+  url.searchParams.set("store", storeId);
+  window.history.replaceState(null, "", url);
+  await init();
 }
 
 function updateSyncTimer() {
@@ -229,7 +926,9 @@ function updateSyncTimer() {
 
 async function refreshFromCloud() {
   if (!supabaseClient || !currentUser) return;
-  if (els.dialog.open || els.movementDialog.open || els.costingDialog.open || els.supplierOrderDialog.open) return;
+  if (els.dialog.open || els.movementDialog.open || els.costingDialog.open || els.supplierOrderDialog.open || els.storeSettingsDialog.open) return;
+  if (saveInProgress > 0 || Date.now() < suppressAutoRefreshUntil) return;
+  await loadTenantContext();
   items = await loadItems();
   history = await loadHistory();
   costings = await loadCostings();
@@ -237,14 +936,29 @@ async function refreshFromCloud() {
   render();
 }
 
+function holdAutoRefresh() {
+  suppressAutoRefreshUntil = Date.now() + 10000;
+}
+
+function beginSave() {
+  saveInProgress += 1;
+  holdAutoRefresh();
+}
+
+function endSave() {
+  saveInProgress = Math.max(0, saveInProgress - 1);
+  holdAutoRefresh();
+}
+
 async function loadItems() {
   if (supabaseClient && !currentUser) return [];
 
   if (supabaseClient && currentUser) {
-    const { data, error } = await supabaseClient
+    const query = supabaseClient
       .from("inventory_items")
       .select("*")
       .order("name", { ascending: true });
+    const { data, error } = await scopeToCurrentStore(query);
 
     if (error) {
       alert(`在庫データの読み込みに失敗しました: ${error.message}`);
@@ -260,7 +974,7 @@ async function loadItems() {
     const seedItems = await response.json();
     return seedItems.map(normalizeItem);
   } catch {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(scopedStorageKey(STORAGE_KEY));
     if (!saved) return [];
 
     try {
@@ -275,11 +989,12 @@ async function loadHistory() {
   if (supabaseClient && !currentUser) return [];
 
   if (supabaseClient && currentUser) {
-    const { data, error } = await supabaseClient
+    const query = supabaseClient
       .from("inventory_movements")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(100);
+    const { data, error } = await scopeToCurrentStore(query);
 
     if (error) return [];
     return data.map(fromDbMovement);
@@ -288,7 +1003,7 @@ async function loadHistory() {
   try {
     return [];
   } catch {
-    const saved = localStorage.getItem(HISTORY_KEY);
+    const saved = localStorage.getItem(scopedStorageKey(HISTORY_KEY));
     if (!saved) return [];
 
     try {
@@ -304,7 +1019,7 @@ function normalizeItem(item) {
     id: item.id ?? crypto.randomUUID(),
     name: item.name ?? "",
     sku: item.sku ?? "",
-    category: categoryOptions.includes(item.category) ? item.category : "野菜",
+    category: String(item.category ?? "").trim() || categoryOptions[0] || "未分類",
     supplier: item.supplier ?? "",
     location: normalizeLocation(item.location),
     unit: normalizeUnit(item.unit),
@@ -348,10 +1063,11 @@ async function loadCostings() {
   if (supabaseClient && !currentUser) return [];
 
   if (supabaseClient && currentUser) {
-    const { data, error } = await supabaseClient
+    const query = supabaseClient
       .from("menu_costings")
       .select("*")
       .order("name", { ascending: true });
+    const { data, error } = await scopeToCurrentStore(query);
 
     if (error) {
       alert(`原価計算データの読み込みに失敗しました: ${error.message}`);
@@ -365,7 +1081,7 @@ async function loadCostings() {
     }
 
     const cloudCostings = normalizeCostingsList(data.map(fromDbCosting));
-    localStorage.setItem(COSTINGS_KEY, JSON.stringify(cloudCostings));
+    localStorage.setItem(scopedStorageKey(COSTINGS_KEY), JSON.stringify(cloudCostings));
     return cloudCostings;
   }
 
@@ -378,10 +1094,11 @@ async function loadSupplierOrderSettings() {
   if (supabaseClient && !currentUser) return [];
 
   if (supabaseClient && currentUser) {
-    const { data, error } = await supabaseClient
+    const query = supabaseClient
       .from("supplier_order_settings")
       .select("*")
       .order("supplier", { ascending: true });
+    const { data, error } = await scopeToCurrentStore(query);
 
     if (error?.code === "42P01" || error?.code === "PGRST205") return localSettings;
     if (error) {
@@ -396,7 +1113,7 @@ async function loadSupplierOrderSettings() {
     }
 
     const cloudSettings = data.map(fromDbSupplierOrderSetting).map(normalizeSupplierOrderSetting);
-    localStorage.setItem(SUPPLIER_ORDER_SETTINGS_KEY, JSON.stringify(cloudSettings));
+    localStorage.setItem(scopedStorageKey(SUPPLIER_ORDER_SETTINGS_KEY), JSON.stringify(cloudSettings));
     return cloudSettings;
   }
 
@@ -405,7 +1122,7 @@ async function loadSupplierOrderSettings() {
 
 function readLocalSupplierOrderSettings() {
   try {
-    return JSON.parse(localStorage.getItem(SUPPLIER_ORDER_SETTINGS_KEY) || "[]").map(normalizeSupplierOrderSetting);
+    return JSON.parse(localStorage.getItem(scopedStorageKey(SUPPLIER_ORDER_SETTINGS_KEY)) || "[]").map(normalizeSupplierOrderSetting);
   } catch {
     return [];
   }
@@ -413,7 +1130,7 @@ function readLocalSupplierOrderSettings() {
 
 function readLocalCostings() {
   try {
-    return normalizeCostingsList(JSON.parse(localStorage.getItem(COSTINGS_KEY) || "[]"));
+    return normalizeCostingsList(JSON.parse(localStorage.getItem(scopedStorageKey(COSTINGS_KEY)) || "[]"));
   } catch {
     return [];
   }
@@ -541,58 +1258,89 @@ function normalizeUnit(unit) {
 }
 
 async function saveItems() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-
-  if (supabaseClient && currentUser) {
-    const { error } = await supabaseClient
-      .from("inventory_items")
-      .upsert(items.map(toDbItem), { onConflict: "id" });
-
-    if (error?.code === "PGRST204" || error?.code === "42703") {
-      const { error: retryError } = await supabaseClient
+  beginSave();
+  try {
+    if (supabaseClient && currentUser) {
+      const { error } = await supabaseClient
         .from("inventory_items")
-        .upsert(items.map((item) => toDbItem(item, false)), { onConflict: "id" });
+        .upsert(items.map(toDbItem), { onConflict: "id" });
 
-      if (retryError) alert(`在庫データの保存に失敗しました: ${retryError.message}`);
-      return;
+      if (error?.code === "PGRST204" || error?.code === "42703") {
+        const { error: retryError } = await supabaseClient
+          .from("inventory_items")
+          .upsert(items.map((item) => toDbItem(item, false)), { onConflict: "id" });
+
+        if (retryError) {
+          alert(`在庫データの保存に失敗しました: ${retryError.message}`);
+          return false;
+        }
+        localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(items));
+        return true;
+      }
+
+      if (error) {
+        alert(`在庫データの保存に失敗しました: ${error.message}`);
+        return false;
+      }
     }
 
-    if (error) alert(`在庫データの保存に失敗しました: ${error.message}`);
+    localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(items));
+    return true;
+  } finally {
+    endSave();
   }
 }
 
 async function saveHistory() {
   const recentHistory = history.slice(0, 100);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(recentHistory));
+  beginSave();
+  try {
+    if (supabaseClient && currentUser && recentHistory[0]) {
+      const { error } = await supabaseClient
+        .from("inventory_movements")
+        .insert(toDbMovement(recentHistory[0]));
 
-  if (supabaseClient && currentUser && recentHistory[0]) {
-    const { error } = await supabaseClient
-      .from("inventory_movements")
-      .insert(toDbMovement(recentHistory[0]));
+      if (error) console.warn(`履歴保存に失敗しました: ${error.message}`);
+    }
 
-    if (error) console.warn(`履歴保存に失敗しました: ${error.message}`);
+    localStorage.setItem(scopedStorageKey(HISTORY_KEY), JSON.stringify(recentHistory));
+    return true;
+  } finally {
+    endSave();
   }
 }
 
 async function saveCostings() {
-  localStorage.setItem(COSTINGS_KEY, JSON.stringify(costings));
-
-  if (supabaseClient && currentUser) {
-    if (costings.length === 0) return;
-    const { error } = await supabaseClient
-      .from("menu_costings")
-      .upsert(costings.map(toDbCosting), { onConflict: "id" });
-
-    if (error?.code === "PGRST204" || error?.code === "42703") {
-      const { error: retryError } = await supabaseClient
+  beginSave();
+  try {
+    if (supabaseClient && currentUser && costings.length > 0) {
+      const { error } = await supabaseClient
         .from("menu_costings")
-        .upsert(costings.map((costing) => toDbCosting(costing, false)), { onConflict: "id" });
+        .upsert(costings.map(toDbCosting), { onConflict: "id" });
 
-      if (retryError) alert(`原価計算データの保存に失敗しました: ${retryError.message}`);
-      return;
+      if (error?.code === "PGRST204" || error?.code === "42703") {
+        const { error: retryError } = await supabaseClient
+          .from("menu_costings")
+          .upsert(costings.map((costing) => toDbCosting(costing, false)), { onConflict: "id" });
+
+        if (retryError) {
+          alert(`原価計算データの保存に失敗しました: ${retryError.message}`);
+          return false;
+        }
+        localStorage.setItem(scopedStorageKey(COSTINGS_KEY), JSON.stringify(costings));
+        return true;
+      }
+
+      if (error) {
+        alert(`原価計算データの保存に失敗しました: ${error.message}`);
+        return false;
+      }
     }
 
-    if (error) alert(`原価計算データの保存に失敗しました: ${error.message}`);
+    localStorage.setItem(scopedStorageKey(COSTINGS_KEY), JSON.stringify(costings));
+    return true;
+  } finally {
+    endSave();
   }
 }
 
@@ -601,19 +1349,27 @@ async function saveSupplierOrderSettings() {
     .map(normalizeSupplierOrderSetting)
     .filter((setting) => setting.supplier);
   supplierOrderSettings = normalizedSettings;
-  localStorage.setItem(SUPPLIER_ORDER_SETTINGS_KEY, JSON.stringify(normalizedSettings));
+  beginSave();
+  try {
+    if (supabaseClient && currentUser && normalizedSettings.length > 0) {
+      const { error } = await supabaseClient
+        .from("supplier_order_settings")
+        .upsert(normalizedSettings.map(toDbSupplierOrderSetting), { onConflict: tenancyEnabled ? "store_id,supplier" : "supplier" });
 
-  if (supabaseClient && currentUser) {
-    if (normalizedSettings.length === 0) return;
-    const { error } = await supabaseClient
-      .from("supplier_order_settings")
-      .upsert(normalizedSettings.map(toDbSupplierOrderSetting), { onConflict: "supplier" });
-
-    if (error?.code === "42P01" || error?.code === "PGRST205") {
-      alert("業者発注設定を全端末で共有するには、Supabaseで supplier_order_settings テーブル作成SQLを実行してください。");
-      return;
+      if (error?.code === "42P01" || error?.code === "PGRST205") {
+        alert("業者発注設定を全端末で共有するには、Supabaseで supplier_order_settings テーブル作成SQLを実行してください。");
+        return false;
+      }
+      if (error) {
+        alert(`業者発注設定の保存に失敗しました: ${error.message}`);
+        return false;
+      }
     }
-    if (error) alert(`業者発注設定の保存に失敗しました: ${error.message}`);
+
+    localStorage.setItem(scopedStorageKey(SUPPLIER_ORDER_SETTINGS_KEY), JSON.stringify(normalizedSettings));
+    return true;
+  } finally {
+    endSave();
   }
 }
 
@@ -658,6 +1414,7 @@ function toDbItem(item, includeOptionalColumns = true) {
     row.gram_price = Number(normalized.gramPrice) || 0;
     row.check_sort_order = normalized.checkSortOrder;
   }
+  if (tenancyEnabled && currentStore?.id) row.store_id = currentStore.id;
   return row;
 }
 
@@ -675,7 +1432,7 @@ function fromDbMovement(row) {
 }
 
 function toDbMovement(entry) {
-  return {
+  const row = {
     item_id: entry.itemId,
     item_name: entry.itemName,
     movement_type: entry.type,
@@ -684,6 +1441,8 @@ function toDbMovement(entry) {
     memo: entry.memo,
     user_email: currentUser?.email ?? ""
   };
+  if (tenancyEnabled && currentStore?.id) row.store_id = currentStore.id;
+  return row;
 }
 
 function fromDbCosting(row) {
@@ -712,6 +1471,7 @@ function toDbCosting(costing, includeSortOrder = true) {
   };
 
   if (includeSortOrder) row.sort_order = normalized.sortOrder;
+  if (tenancyEnabled && currentStore?.id) row.store_id = currentStore.id;
   return row;
 }
 
@@ -729,7 +1489,7 @@ function fromDbSupplierOrderSetting(row) {
 
 function toDbSupplierOrderSetting(setting) {
   const normalized = normalizeSupplierOrderSetting(setting);
-  return {
+  const row = {
     supplier: normalized.supplier,
     method: normalized.method,
     contact: normalized.contact,
@@ -738,9 +1498,12 @@ function toDbSupplierOrderSetting(setting) {
     minimum_order: normalized.minimumOrder,
     memo: normalized.memo
   };
+  if (tenancyEnabled && currentStore?.id) row.store_id = currentStore.id;
+  return row;
 }
 
 function render() {
+  renderItemFormOptions();
   renderSummary();
   renderCategoryFilter();
   renderSupplierFilter();
@@ -751,6 +1514,29 @@ function render() {
   renderOrderSuppliers();
   renderOrders();
   renderCostings();
+  applyLanguage();
+}
+
+function formatVisibleCount(count) {
+  if (currentLanguage === "en") return `${count} shown`;
+  if (currentLanguage === "es") return `${count} mostrados`;
+  return `${count}件を表示中`;
+}
+
+function renderItemFormOptions() {
+  const categorySelect = document.querySelector("#category");
+  const selectedCategory = categorySelect.value;
+  categorySelect.innerHTML = "";
+  categoryOptions.forEach((category) => {
+    const option = document.createElement("option");
+    option.value = category;
+    option.textContent = category;
+    categorySelect.append(option);
+  });
+  categorySelect.value = categoryOptions.includes(selectedCategory) ? selectedCategory : categoryOptions[0] || "";
+
+  const unitList = document.querySelector("#unitOptions");
+  unitList.innerHTML = unitOptions.map((unit) => `<option value="${escapeHtml(unit)}"></option>`).join("");
 }
 
 function renderSummary() {
@@ -818,14 +1604,14 @@ function renderLocationOptions() {
 
 function loadSavedSuppliers() {
   try {
-    return JSON.parse(localStorage.getItem(SUPPLIER_KEY) || "[]");
+    return JSON.parse(localStorage.getItem(scopedStorageKey(SUPPLIER_KEY)) || "[]");
   } catch {
     return [];
   }
 }
 
 function saveSupplierOptions(suppliers) {
-  localStorage.setItem(SUPPLIER_KEY, JSON.stringify([...new Set(suppliers.filter(Boolean))]));
+  localStorage.setItem(scopedStorageKey(SUPPLIER_KEY), JSON.stringify([...new Set(suppliers.filter(Boolean))]));
 }
 
 function addSupplier() {
@@ -838,7 +1624,7 @@ function addSupplier() {
   renderTable(getVisibleItems());
 }
 
-function deleteSupplier() {
+async function deleteSupplier() {
   const current = els.supplierFilter.value;
   const supplier = (current || window.prompt("削除する業者名を入力してください。"))?.trim();
   if (!supplier) return;
@@ -849,10 +1635,16 @@ function deleteSupplier() {
     : `${supplier} を業者候補から削除します。よろしいですか？`;
   if (!window.confirm(message)) return;
 
+  const previousItems = [...items];
   items = items.map((item) => (item.supplier === supplier ? { ...item, supplier: "" } : item));
   saveSupplierOptions(loadSavedSuppliers().filter((entry) => entry !== supplier));
   els.supplierFilter.value = "";
-  saveItems();
+  const saved = await saveItems();
+  if (!saved) {
+    items = previousItems;
+    render();
+    return;
+  }
   render();
 }
 
@@ -940,8 +1732,9 @@ function renderCheckItems() {
   const visibleItems = getCheckItems();
   const location = els.checkLocationFilter.value;
   els.checkGrid.innerHTML = "";
-  els.checkLocationTitle.textContent = location ? `${location} チェック` : "冷蔵庫チェック";
-  els.checkResultCount.textContent = `${visibleItems.length}件を表示中`;
+  const checkSuffix = currentLanguage === "en" ? "check" : currentLanguage === "es" ? "revisión" : "チェック";
+  els.checkLocationTitle.textContent = location ? `${location} ${checkSuffix}` : t("冷蔵庫チェック");
+  els.checkResultCount.textContent = formatVisibleCount(visibleItems.length);
   els.checkEmptyState.hidden = visibleItems.length !== 0;
 
   visibleItems.forEach((item) => {
@@ -952,7 +1745,7 @@ function renderCheckItems() {
         <button class="check-name-button" data-check-action="edit" data-id="${item.id}" type="button">
           ${escapeHtml(item.name)}
         </button>
-        <span>${escapeHtml(item.location || "未設定")} / ${escapeHtml(item.category)}</span>
+        <span>${escapeHtml(item.location || t("未設定"))} / ${escapeHtml(item.category)}</span>
       </div>
       <div class="check-stock">
         <button class="check-step-button decrease" data-check-action="decrease" data-id="${item.id}" type="button">-1</button>
@@ -960,11 +1753,11 @@ function renderCheckItems() {
         <button class="check-step-button increase" data-check-action="increase" data-id="${item.id}" type="button">+1</button>
       </div>
       <div class="check-card-actions">
-        <button class="ghost-button" data-check-action="move-up" data-id="${item.id}" type="button">上へ</button>
-        <button class="ghost-button" data-check-action="move-down" data-id="${item.id}" type="button">下へ</button>
-        <button class="ghost-button" data-check-action="set" data-id="${item.id}" type="button">数を入力</button>
-        <button class="ghost-button" data-check-action="use" data-id="${item.id}" type="button">使用</button>
-        <button class="ghost-button" data-check-action="receive" data-id="${item.id}" type="button">納品</button>
+        <button class="ghost-button" data-check-action="move-up" data-id="${item.id}" type="button">${t("上へ")}</button>
+        <button class="ghost-button" data-check-action="move-down" data-id="${item.id}" type="button">${t("下へ")}</button>
+        <button class="ghost-button" data-check-action="set" data-id="${item.id}" type="button">${t("数を入力")}</button>
+        <button class="ghost-button" data-check-action="use" data-id="${item.id}" type="button">${t("使用")}</button>
+        <button class="ghost-button" data-check-action="receive" data-id="${item.id}" type="button">${t("納品")}</button>
       </div>
     `;
     els.checkGrid.append(article);
@@ -1024,27 +1817,27 @@ function getSupplierOrderSetting(supplier) {
 }
 
 function formatSupplierOrderDetails(setting) {
-  if (!setting) return "発注設定なし";
+  if (!setting) return t("発注設定なし");
   return [
-    setting.method ? `方法: ${setting.method}` : "",
-    setting.cutoff ? `締切: ${setting.cutoff}` : "",
-    setting.deliveryDays ? `納品: ${setting.deliveryDays}` : "",
-    setting.minimumOrder ? `注意: ${setting.minimumOrder}` : "",
-    setting.contact ? `連絡先: ${setting.contact}` : ""
-  ].filter(Boolean).join(" / ") || "発注設定なし";
+    setting.method ? `${t("方法")}: ${setting.method}` : "",
+    setting.cutoff ? `${t("締切")}: ${setting.cutoff}` : "",
+    setting.deliveryDays ? `${t("納品")}: ${setting.deliveryDays}` : "",
+    setting.minimumOrder ? `${t("注意")}: ${setting.minimumOrder}` : "",
+    setting.contact ? `${t("連絡先")}: ${setting.contact}` : ""
+  ].filter(Boolean).join(" / ") || t("発注設定なし");
 }
 
 function renderOrders() {
   const rows = getOrderRows();
   els.orderList.innerHTML = "";
-  els.orderResultCount.textContent = `${rows.length}件を表示中`;
+  els.orderResultCount.textContent = formatVisibleCount(rows.length);
   els.orderEmptyState.hidden = rows.length !== 0;
   els.orderTextPreview.hidden = rows.length === 0;
   els.orderTextPreview.value = buildOrderText(rows);
 
   const grouped = new Map();
   rows.forEach((row) => {
-    const supplier = row.item.supplier || "未設定";
+    const supplier = row.item.supplier || t("未設定");
     if (!grouped.has(supplier)) grouped.set(supplier, []);
     grouped.get(supplier).push(row);
   });
@@ -1057,10 +1850,10 @@ function renderOrders() {
       <div class="order-group-header">
         <div>
           <h3>${escapeHtml(supplier)}</h3>
-          <p>${supplierRows.length}件 / ${escapeHtml(formatSupplierOrderDetails(setting))}</p>
+          <p>${formatVisibleCount(supplierRows.length)} / ${escapeHtml(formatSupplierOrderDetails(setting))}</p>
           ${setting?.memo ? `<p>${escapeHtml(setting.memo)}</p>` : ""}
         </div>
-        <button class="ghost-button" data-supplier-order-action="edit" data-supplier="${escapeHtml(supplier)}" type="button">設定</button>
+        <button class="ghost-button" data-supplier-order-action="edit" data-supplier="${escapeHtml(supplier)}" type="button">${t("設定")}</button>
       </div>
       <div class="table-wrap compact">
         <table>
@@ -1080,7 +1873,7 @@ function renderOrders() {
                 <td>
                   <div class="product-main">
                     <strong>${escapeHtml(item.name)}</strong>
-                    <span class="sku">${escapeHtml(item.location || "未設定")} / ${escapeHtml(item.category)}</span>
+                    <span class="sku">${escapeHtml(item.location || t("未設定"))} / ${escapeHtml(item.category)}</span>
                   </div>
                 </td>
                 <td>${formatQuantity(item.stock)} ${escapeHtml(item.unit)}</td>
@@ -1089,7 +1882,7 @@ function renderOrders() {
                 <td>
                   <input class="order-quantity-input" data-order-id="${item.id}" type="number" min="0" step="0.01" value="${escapeHtml(orderQuantity)}" aria-label="${escapeHtml(item.name)}の発注数">
                   <span class="order-unit">${escapeHtml(item.unit)}</span>
-                  <small>推奨 ${formatQuantity(suggestedQuantity)} ${escapeHtml(item.unit)}</small>
+                  <small>${t("推奨")} ${formatQuantity(suggestedQuantity)} ${escapeHtml(item.unit)}</small>
                 </td>
                 <td>${escapeHtml(item.note || "")}</td>
               </tr>
@@ -1150,7 +1943,7 @@ function openOrderMail() {
   }
   const supplier = els.orderSupplierFilter.value || "業者別";
   const setting = els.orderSupplierFilter.value ? getSupplierOrderSetting(els.orderSupplierFilter.value) : null;
-  const subject = encodeURIComponent(`THE PORT 発注 ${supplier}`);
+  const subject = encodeURIComponent(`${storeSettings.businessName} 発注 ${supplier}`);
   const body = encodeURIComponent(text);
   const contact = setting?.method === "メール" && setting.contact.includes("@") ? setting.contact : "";
   window.location.href = `mailto:${encodeURIComponent(contact)}?subject=${subject}&body=${body}`;
@@ -1209,6 +2002,7 @@ function openSupplierOrderSettings(supplier = "") {
   els.supplierOrderMinimum.value = setting?.minimumOrder ?? "";
   els.supplierOrderMemo.value = setting?.memo ?? "";
   els.supplierOrderDialog.showModal();
+  applyLanguage(els.supplierOrderDialog);
   els.supplierOrderName.focus();
 }
 
@@ -1218,6 +2012,7 @@ function closeSupplierOrderSettings() {
 
 async function handleSupplierOrderSettingsSubmit(event) {
   event.preventDefault();
+  const previousSettings = [...supplierOrderSettings];
   const setting = normalizeSupplierOrderSetting({
     supplier: els.supplierOrderName.value,
     method: els.supplierOrderMethod.value,
@@ -1237,7 +2032,12 @@ async function handleSupplierOrderSettingsSubmit(event) {
     setting
   ].sort((a, b) => a.supplier.localeCompare(b.supplier, "ja"));
 
-  await saveSupplierOrderSettings();
+  const saved = await saveSupplierOrderSettings();
+  if (!saved) {
+    supplierOrderSettings = previousSettings;
+    renderOrders();
+    return;
+  }
   closeSupplierOrderSettings();
   renderOrders();
 }
@@ -1248,13 +2048,15 @@ async function deleteSupplierOrderSettings() {
   if (!confirm(`${supplier} の発注設定を削除しますか？`)) return;
 
   supplierOrderSettings = supplierOrderSettings.filter((setting) => setting.supplier !== supplier);
-  localStorage.setItem(SUPPLIER_ORDER_SETTINGS_KEY, JSON.stringify(supplierOrderSettings));
+  localStorage.setItem(scopedStorageKey(SUPPLIER_ORDER_SETTINGS_KEY), JSON.stringify(supplierOrderSettings));
 
   if (supabaseClient && currentUser) {
-    const { error } = await supabaseClient
+    let query = supabaseClient
       .from("supplier_order_settings")
       .delete()
       .eq("supplier", supplier);
+    query = scopeToCurrentStore(query);
+    const { error } = await query;
     if (error && error.code !== "42P01" && error.code !== "PGRST205") {
       alert(`業者発注設定の削除に失敗しました: ${error.message}`);
     }
@@ -1281,7 +2083,9 @@ function updateCheckUrlPreview() {
 }
 
 function canManageCheckUrls() {
-  return currentUser?.email === CHECK_URL_MANAGER_EMAIL;
+  if (!currentUser) return false;
+  if (tenancyEnabled) return currentStoreRole === "admin" || currentUser.email === storeSettings.managerEmail;
+  return currentUser.email === storeSettings.managerEmail;
 }
 
 function updateCheckUrlPermission() {
@@ -1297,11 +2101,12 @@ function updateCheckUrlState() {
   window.history.replaceState(null, "", url);
 }
 
-function moveCheckItem(id, direction) {
+async function moveCheckItem(id, direction) {
   const visibleItems = getCheckItems();
   const index = visibleItems.findIndex((item) => item.id === id);
   const targetIndex = direction === "up" ? index - 1 : index + 1;
   if (index < 0 || targetIndex < 0 || targetIndex >= visibleItems.length) return;
+  const previousItems = [...items];
 
   const reordered = [...visibleItems];
   [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
@@ -1312,7 +2117,12 @@ function moveCheckItem(id, direction) {
   const orderById = new Map(reordered.map((item, itemIndex) => [item.id, startOrder + itemIndex]));
 
   items = items.map((item) => orderById.has(item.id) ? { ...item, checkSortOrder: orderById.get(item.id) } : item);
-  saveItems();
+  const saved = await saveItems();
+  if (!saved) {
+    items = previousItems;
+    renderCheckItems();
+    return;
+  }
   renderCheckItems();
 }
 
@@ -1346,20 +2156,13 @@ function applyInitialViewFromUrl() {
 function switchView(view) {
   els.tabButtons.forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
   els.viewPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === view));
-  const titles = {
-    inventory: "THE PORT 在庫管理",
-    check: "冷蔵庫チェック",
-    order: "THE PORT 発注",
-    costing: "THE PORT原価"
-  };
-  els.appTitle.textContent = titles[view] ?? titles.inventory;
-  document.title = titles[view] ?? titles.inventory;
+  updateAppTitle(view);
   els.summaryGrid.hidden = view === "check";
 }
 
 function renderTable(visibleItems) {
   els.table.innerHTML = "";
-  els.resultCount.textContent = `${visibleItems.length}件を表示中`;
+  els.resultCount.textContent = formatVisibleCount(visibleItems.length);
   els.emptyState.hidden = items.length !== 0;
 
   visibleItems.forEach((item) => {
@@ -1370,20 +2173,20 @@ function renderTable(visibleItems) {
     row.innerHTML = `
       <td>
         <div class="product-main">
-          <button class="product-name-button" data-action="edit" data-id="${item.id}" type="button" title="商品を編集">
+          <button class="product-name-button" data-action="edit" data-id="${item.id}" type="button" title="${t("食材・資材を編集")}">
             ${escapeHtml(item.name)}
           </button>
-          <span class="sku">${escapeHtml(item.sku)} / ${escapeHtml(item.location || "未設定")}</span>
+          <span class="sku">${escapeHtml(item.sku)} / ${escapeHtml(item.location || t("未設定"))}</span>
           ${item.note ? `<span class="note">${escapeHtml(item.note)}</span>` : ""}
         </div>
       </td>
       <td>${escapeHtml(item.category)}</td>
-      <td>${escapeHtml(item.supplier || "未設定")}</td>
+      <td>${escapeHtml(item.supplier || t("未設定"))}</td>
       <td><span class="stock-badge ${isLow ? "low" : ""}">${formatQuantity(stock)} ${escapeHtml(item.unit)}</span></td>
       <td>
         <div class="ideal-stock">
-          <span>平日 ${formatQuantity(item.idealWeekdayStock)} ${escapeHtml(item.unit)}</span>
-          <span>土日 ${formatQuantity(item.idealWeekendStock)} ${escapeHtml(item.unit)}</span>
+          <span>${t("平日")} ${formatQuantity(item.idealWeekdayStock)} ${escapeHtml(item.unit)}</span>
+          <span>${t("土日")} ${formatQuantity(item.idealWeekendStock)} ${escapeHtml(item.unit)}</span>
         </div>
       </td>
       <td>${formatQuantity(item.reorderPoint)} ${escapeHtml(item.unit)}</td>
@@ -1391,10 +2194,10 @@ function renderTable(visibleItems) {
       <td>${Number(item.gramPrice) > 0 ? gramPriceYen.format(Number(item.gramPrice)) : "-"}</td>
       <td>
         <div class="row-actions">
-          <button class="action-button receive" data-action="receive" data-id="${item.id}" title="仕入れを追加">仕入</button>
-          <button class="action-button use" data-action="use" data-id="${item.id}" title="使用分を減らす">使用</button>
-          <button class="icon-button" data-action="edit" data-id="${item.id}" title="編集" aria-label="編集">✎</button>
-          <button class="icon-button" data-action="delete" data-id="${item.id}" title="削除" aria-label="削除">×</button>
+          <button class="action-button receive" data-action="receive" data-id="${item.id}" title="${t("仕入れを追加")}">${t("納品")}</button>
+          <button class="action-button use" data-action="use" data-id="${item.id}" title="${t("使用分を減らす")}">${t("使用")}</button>
+          <button class="icon-button" data-action="edit" data-id="${item.id}" title="${t("食材・資材を編集")}" aria-label="${t("食材・資材を編集")}">✎</button>
+          ${!tenancyEnabled || currentStoreRole === "admin" ? `<button class="icon-button" data-action="delete" data-id="${item.id}" title="${t("設定削除")}" aria-label="${t("設定削除")}">×</button>` : ""}
         </div>
       </td>
     `;
@@ -1405,7 +2208,7 @@ function renderTable(visibleItems) {
 function renderCostings() {
   const visibleCostings = getVisibleCostings();
   els.costingGrid.innerHTML = "";
-  els.costingResultCount.textContent = `${visibleCostings.length}件を表示中`;
+  els.costingResultCount.textContent = formatVisibleCount(visibleCostings.length);
   els.costingEmptyState.hidden = costings.length !== 0;
 
   visibleCostings.forEach((costing) => {
@@ -1421,33 +2224,33 @@ function renderCostings() {
           ${costing.note ? `<p>${escapeHtml(costing.note)}</p>` : ""}
         </button>
         <div class="row-actions">
-          <button class="icon-button" data-costing-action="move-up" data-id="${costing.id}" title="上へ移動" aria-label="上へ移動">↑</button>
-          <button class="icon-button" data-costing-action="move-down" data-id="${costing.id}" title="下へ移動" aria-label="下へ移動">↓</button>
-          ${isPrep ? `<button class="icon-button" data-costing-action="sync-item" data-id="${costing.id}" title="在庫へ反映" aria-label="在庫へ反映">↻</button>` : ""}
-          <button class="icon-button" data-costing-action="edit" data-id="${costing.id}" title="編集" aria-label="編集">✎</button>
-          <button class="icon-button" data-costing-action="delete" data-id="${costing.id}" title="削除" aria-label="削除">×</button>
+          <button class="icon-button" data-costing-action="move-up" data-id="${costing.id}" title="${t("上へ")}" aria-label="${t("上へ")}">↑</button>
+          <button class="icon-button" data-costing-action="move-down" data-id="${costing.id}" title="${t("下へ")}" aria-label="${t("下へ")}">↓</button>
+          ${isPrep ? `<button class="icon-button" data-costing-action="sync-item" data-id="${costing.id}" title="${t("反映")}" aria-label="${t("反映")}">↻</button>` : ""}
+          <button class="icon-button" data-costing-action="edit" data-id="${costing.id}" title="${t("メニュー原価を編集")}" aria-label="${t("メニュー原価を編集")}">✎</button>
+          ${!tenancyEnabled || currentStoreRole === "admin" ? `<button class="icon-button" data-costing-action="delete" data-id="${costing.id}" title="${t("設定削除")}" aria-label="${t("設定削除")}">×</button>` : ""}
         </div>
       </div>
       <div class="costing-metrics">
         <div>
-          <span>${isPrep ? "g単価" : "1食原価"}</span>
+          <span>${isPrep ? t("g単価") : t("1食原価")}</span>
           <strong>${formatCostingCost(summary.costPerServing, isPrep)}</strong>
         </div>
         <div>
-          <span>${isPrep ? "仕上がり量" : "販売価格"}</span>
+          <span>${isPrep ? t("仕上がり量") : t("販売価格")}</span>
           <strong>${isPrep ? `${formatQuantity(costing.yieldCount)}g` : costing.salePrice > 0 ? yen.format(costing.salePrice) : "-"}</strong>
         </div>
         <div class="${!isPrep && summary.rate >= 35 ? "high-rate" : ""}">
-          <span>${isPrep ? "総原価" : "原価率"}</span>
+          <span>${isPrep ? t("総原価") : t("原価率")}</span>
           <strong>${isPrep ? yen.format(summary.totalCost) : formatRate(summary.rate)}</strong>
         </div>
         <div>
-          <span>${isPrep ? "在庫反映" : "粗利"}</span>
-          <strong>${isPrep ? "仕込み品" : costing.salePrice > 0 ? yen.format(costing.salePrice - summary.costPerServing) : "-"}</strong>
+          <span>${isPrep ? t("在庫反映") : t("粗利")}</span>
+          <strong>${isPrep ? t("仕込み品") : costing.salePrice > 0 ? yen.format(costing.salePrice - summary.costPerServing) : "-"}</strong>
         </div>
       </div>
       <div class="ingredient-list" hidden>
-        ${summary.lines.length ? summary.lines.map(renderIngredientLine).join("") : '<p class="muted-text">材料が登録されていません。</p>'}
+        ${summary.lines.length ? summary.lines.map(renderIngredientLine).join("") : `<p class="muted-text">${t("材料が登録されていません。")}</p>`}
       </div>
     `;
     els.costingGrid.append(article);
@@ -1467,7 +2270,7 @@ function formatCostingCategory(category) {
 function renderIngredientLine(line) {
   return `
     <div class="ingredient-line ${line.item || line.name ? "" : "missing"}">
-      <span>${escapeHtml(line.item?.name ?? line.name ?? "材料名未設定")}</span>
+      <span>${escapeHtml(line.item?.name ?? line.name ?? t("材料名未設定"))}</span>
       <span>${formatQuantity(line.quantity)} ${escapeHtml(line.unit || line.item?.unit || "")}</span>
       <strong>${yen.format(line.cost)}</strong>
     </div>
@@ -1568,6 +2371,7 @@ function openForm(item = null) {
   }
 
   els.dialog.showModal();
+  applyLanguage(els.dialog);
   document.querySelector("#name").focus();
 }
 
@@ -1576,8 +2380,9 @@ function closeForm() {
   editingId = null;
 }
 
-function handleFormSubmit(event) {
+async function handleFormSubmit(event) {
   event.preventDefault();
+  const previousItems = [...items];
   const formItem = normalizeItem({
     id: editingId ?? crypto.randomUUID(),
     name: document.querySelector("#name").value.trim(),
@@ -1600,7 +2405,12 @@ function handleFormSubmit(event) {
     items.push(formItem);
   }
 
-  saveItems();
+  const saved = await saveItems();
+  if (!saved) {
+    items = previousItems;
+    render();
+    return;
+  }
   closeForm();
   render();
 }
@@ -1617,6 +2427,7 @@ function openMovementForm(id, type) {
   els.movementQuantity.placeholder = item.unit;
   els.movementMemo.placeholder = type === "receive" ? "例: 業者から仕入れ" : "例: ランチ営業で使用";
   els.movementDialog.showModal();
+  applyLanguage(els.movementDialog);
   els.movementQuantity.focus();
 }
 
@@ -1639,6 +2450,7 @@ function openCostingForm(costing = null) {
   ingredients.forEach((ingredient) => addIngredientRow(ingredient));
   updateCostingPreview();
   els.costingDialog.showModal();
+  applyLanguage(els.costingDialog);
   els.costingName.focus();
 }
 
@@ -1810,8 +2622,9 @@ function updateCostingPreview() {
   els.costingPreviewRate.textContent = draft.category === "PREP" ? `${yen.format(summary.totalCost)} / ${formatQuantity(draft.yieldCount)}g` : formatRate(summary.rate);
 }
 
-function handleCostingSubmit(event) {
+async function handleCostingSubmit(event) {
   event.preventDefault();
+  const previousCostings = [...costings];
   const existingCosting = costings.find((costing) => costing.id === editingCostingId);
   const formCosting = normalizeCosting({
     id: editingCostingId ?? crypto.randomUUID(),
@@ -1835,23 +2648,35 @@ function handleCostingSubmit(event) {
     costings.push(formCosting);
   }
 
-  saveCostings();
+  const saved = await saveCostings();
+  if (!saved) {
+    costings = previousCostings;
+    renderCostings();
+    return;
+  }
   closeCostingForm();
   renderCostings();
 }
 
-function deleteCosting(id) {
+async function deleteCosting(id) {
   const costing = costings.find((entry) => entry.id === id);
   if (!costing || !confirm(`${costing.name}を削除しますか？`)) return;
+  const previousCostings = [...costings];
   costings = costings.filter((entry) => entry.id !== id);
-  saveCostings();
-  deleteRemoteCosting(id);
+  const saved = await saveCostings();
+  const deleted = await deleteRemoteCosting(id);
+  if (!saved || !deleted) {
+    costings = previousCostings;
+    renderCostings();
+    return;
+  }
   renderCostings();
 }
 
-function moveCosting(id, direction) {
+async function moveCosting(id, direction) {
   els.costingSortSelect.value = "manual";
   applyCostingSortOrder();
+  const previousCostings = [...costings];
   const visibleCostings = getVisibleCostings();
   const index = visibleCostings.findIndex((costing) => costing.id === id);
   const targetIndex = direction === "up" ? index - 1 : index + 1;
@@ -1867,13 +2692,19 @@ function moveCosting(id, direction) {
     if (costing.id === target.id) return target;
     return costing;
   });
-  saveCostings();
+  const saved = await saveCostings();
+  if (!saved) {
+    costings = previousCostings;
+    renderCostings();
+    return;
+  }
   renderCostings();
 }
 
-function syncPrepCostingToInventory(id) {
+async function syncPrepCostingToInventory(id) {
   const costing = costings.find((entry) => entry.id === id);
   if (!costing) return;
+  const previousItems = [...items];
 
   if (costing.category !== "PREP") {
     alert("仕込み品カテゴリのみ在庫へ反映できます。");
@@ -1910,7 +2741,12 @@ function syncPrepCostingToInventory(id) {
     items.push(inventoryItem);
   }
 
-  saveItems();
+  const saved = await saveItems();
+  if (!saved) {
+    items = previousItems;
+    render();
+    return;
+  }
   render();
   alert(`${costing.name}を在庫マスターへ反映しました。`);
 }
@@ -1922,17 +2758,25 @@ function applyCostingSortOrder() {
 }
 
 async function deleteRemoteCosting(id) {
-  if (!supabaseClient || !currentUser) return;
-  const { error } = await supabaseClient
+  if (!supabaseClient || !currentUser) return true;
+  let query = supabaseClient
     .from("menu_costings")
     .delete()
     .eq("id", id);
+  query = scopeToCurrentStore(query);
+  const { error } = await query;
 
-  if (error) alert(`原価計算データの削除に失敗しました: ${error.message}`);
+  if (error) {
+    alert(`原価計算データの削除に失敗しました: ${error.message}`);
+    return false;
+  }
+  return true;
 }
 
-function handleMovementSubmit(event) {
+async function handleMovementSubmit(event) {
   event.preventDefault();
+  const previousItems = [...items];
+  const previousHistory = [...history];
   const id = els.movementItemId.value;
   const type = els.movementType.value;
   const quantity = Number(els.movementQuantity.value);
@@ -1963,15 +2807,23 @@ function handleMovementSubmit(event) {
     createdAt: new Date().toISOString()
   });
 
-  saveItems();
-  saveHistory();
+  const savedItems = await saveItems();
+  const savedHistory = await saveHistory();
+  if (!savedItems || !savedHistory) {
+    items = previousItems;
+    history = previousHistory;
+    render();
+    return;
+  }
   closeMovementForm();
   render();
 }
 
-function applyStockChange(id, delta, memo) {
+async function applyStockChange(id, delta, memo) {
   const item = items.find((entry) => entry.id === id);
   if (!item || !Number.isFinite(delta) || delta === 0) return;
+  const previousItems = [...items];
+  const previousHistory = [...history];
 
   const nextStock = Math.max(0, Number(item.stock) + delta);
   const appliedQuantity = Math.abs(nextStock - Number(item.stock));
@@ -1989,12 +2841,18 @@ function applyStockChange(id, delta, memo) {
     createdAt: new Date().toISOString()
   });
 
-  saveItems();
-  saveHistory();
+  const savedItems = await saveItems();
+  const savedHistory = await saveHistory();
+  if (!savedItems || !savedHistory) {
+    items = previousItems;
+    history = previousHistory;
+    render();
+    return;
+  }
   render();
 }
 
-function setCheckStock(id) {
+async function setCheckStock(id) {
   const item = items.find((entry) => entry.id === id);
   if (!item) return;
 
@@ -2007,26 +2865,38 @@ function setCheckStock(id) {
   }
 
   const delta = nextStock - Number(item.stock);
-  applyStockChange(id, delta, "冷蔵庫チェックで在庫数を修正");
+  await applyStockChange(id, delta, "冷蔵庫チェックで在庫数を修正");
 }
 
-function deleteItem(id) {
+async function deleteItem(id) {
   const item = items.find((entry) => entry.id === id);
   if (!item || !confirm(`${item.name}を削除しますか？`)) return;
+  const previousItems = [...items];
   items = items.filter((entry) => entry.id !== id);
-  saveItems();
-  deleteRemoteItem(id);
+  const saved = await saveItems();
+  const deleted = await deleteRemoteItem(id);
+  if (!saved || !deleted) {
+    items = previousItems;
+    render();
+    return;
+  }
   render();
 }
 
 async function deleteRemoteItem(id) {
-  if (!supabaseClient || !currentUser) return;
-  const { error } = await supabaseClient
+  if (!supabaseClient || !currentUser) return true;
+  let query = supabaseClient
     .from("inventory_items")
     .delete()
     .eq("id", id);
+  query = scopeToCurrentStore(query);
+  const { error } = await query;
 
-  if (error) alert(`削除に失敗しました: ${error.message}`);
+  if (error) {
+    alert(`削除に失敗しました: ${error.message}`);
+    return false;
+  }
+  return true;
 }
 
 function exportCsv() {
@@ -2052,7 +2922,7 @@ function exportCsv() {
   const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `restaurant-inventory-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `${storeSettings.businessName}-inventory-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
@@ -2080,7 +2950,7 @@ function exportCostingCsv() {
   const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `menu-costings-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `${storeSettings.businessName}-menu-costings-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
@@ -2092,7 +2962,7 @@ function csvCell(value) {
 
 function importCsv(file) {
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     const lines = String(reader.result).trim().split(/\r?\n/).slice(1);
     const imported = lines.map(parseCsvLine).filter((row) => row.length >= 9).map((row) => normalizeItem({
       id: crypto.randomUUID(),
@@ -2116,8 +2986,14 @@ function importCsv(file) {
       return;
     }
 
+    const previousItems = [...items];
     items = imported;
-    saveItems();
+    const saved = await saveItems();
+    if (!saved) {
+      items = previousItems;
+      render();
+      return;
+    }
     render();
   };
   reader.readAsText(file, "utf-8");
@@ -2150,6 +3026,7 @@ function parseCsvLine(line) {
 }
 
 els.openForm.addEventListener("click", () => openForm());
+els.languageSelect.addEventListener("change", (event) => changeLanguage(event.target.value));
 els.cancelForm.addEventListener("click", closeForm);
 els.form.addEventListener("submit", handleFormSubmit);
 els.cancelMovement.addEventListener("click", closeMovementForm);
@@ -2178,6 +3055,11 @@ els.markOrderDone.addEventListener("click", markOrderDone);
 els.cancelSupplierOrderSettings.addEventListener("click", closeSupplierOrderSettings);
 els.supplierOrderForm.addEventListener("submit", handleSupplierOrderSettingsSubmit);
 els.deleteSupplierOrderSettings.addEventListener("click", deleteSupplierOrderSettings);
+els.openStoreSettings.addEventListener("click", openStoreSettings);
+els.cancelStoreSettings.addEventListener("click", closeStoreSettings);
+els.storeSettingsForm.addEventListener("submit", handleStoreSettingsSubmit);
+els.storeSelector.addEventListener("change", (event) => switchStore(event.target.value));
+els.openQrCodes.addEventListener("click", openQrCodes);
 els.importCsv.addEventListener("change", (event) => {
   const [file] = event.target.files;
   if (file) importCsv(file);
@@ -2362,9 +3244,11 @@ function toggleCostingDetails(button) {
 
 async function init() {
   if (!supabaseClient) await initSupabase();
+  await loadTenantContext();
   items = await loadItems();
   history = await loadHistory();
   costings = await loadCostings();
+  supplierOrderSettings = await loadSupplierOrderSettings();
   render();
   applyInitialViewFromUrl();
 }
@@ -2401,6 +3285,11 @@ async function handleLogout() {
   items = [];
   history = [];
   costings = [];
+  supplierOrderSettings = [];
+  availableStores = [];
+  currentStore = null;
+  tenancyEnabled = false;
+  applyStoreSettings(defaultStoreSettings);
   render();
 }
 

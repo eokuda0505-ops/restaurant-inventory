@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>THE PORT 冷蔵庫チェックQR</title>
+  <title>冷蔵庫チェックQR</title>
   <style>
     * {
       box-sizing: border-box;
@@ -158,7 +158,7 @@
   <main>
     <header>
       <div>
-        <h1>THE PORT 冷蔵庫チェックQR</h1>
+        <h1 id="pageTitle">冷蔵庫チェックQR</h1>
         <p>各扉に貼るQRコードです。読み込むと、その保管場所のチェック画面を開きます。</p>
       </div>
       <button type="button" onclick="window.print()">印刷</button>
@@ -168,8 +168,10 @@
   </main>
 
   <script>
-    const baseUrl = "https://eokuda0505-ops.github.io/restaurant-inventory/";
-    const locations = [
+    const params = new URLSearchParams(window.location.search);
+    const businessName = params.get("name") || "店舗";
+    const storeId = params.get("store") || "";
+    const defaultLocations = [
       "冷蔵庫１",
       "冷蔵庫２",
       "冷蔵庫３",
@@ -183,21 +185,33 @@
       "ワイン冷蔵",
       "ドリンク冷蔵"
     ];
+    const locations = (params.get("locations") || "")
+      .split("|")
+      .map((location) => location.trim())
+      .filter(Boolean);
+    const activeLocations = locations.length ? locations : defaultLocations;
+    const baseUrl = new URL("./", window.location.href);
 
     const grid = document.querySelector("#qrGrid");
+    document.querySelector("#pageTitle").textContent = `${businessName} 冷蔵庫チェックQR`;
+    document.title = `${businessName} 冷蔵庫チェックQR`;
 
-    locations.forEach((location) => {
+    activeLocations.forEach((location) => {
       const url = new URL(baseUrl);
       url.searchParams.set("view", "check");
       url.searchParams.set("location", location);
+      if (storeId) url.searchParams.set("store", storeId);
 
       const card = document.createElement("article");
       card.className = "qr-card";
-      card.innerHTML = `
-        <h2>${location}</h2>
-        <img alt="${location} QRコード" src="${buildQrImageUrl(url.toString())}">
-        <code>${url.toString()}</code>
-      `;
+      const title = document.createElement("h2");
+      title.textContent = location;
+      const image = document.createElement("img");
+      image.alt = `${location} QRコード`;
+      image.src = buildQrImageUrl(url.toString());
+      const code = document.createElement("code");
+      code.textContent = url.toString();
+      card.append(title, image, code);
       grid.append(card);
     });
 

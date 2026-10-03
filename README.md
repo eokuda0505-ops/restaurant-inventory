@@ -1,89 +1,77 @@
-# 飲食店 在庫管理 GitHub Pages + Supabase版
+# 飲食店向け 在庫・原価・発注管理 汎用版
 
-## 構成
+PC、iPad、iPhoneから同じURLで利用する、複数会社・複数店舗対応版です。
 
-- GitHub Pages: 画面公開
-- Supabase: ログイン、在庫データ保存、操作履歴保存
+## 主な機能
 
-## Supabase設定
+- 在庫の仕入・使用・棚卸
+- 冷蔵庫／冷凍庫別のチェック
+- 適正在庫からの発注候補作成
+- 業者別の発注設定
+- メニュー・仕込み品の原価計算
+- CSV入出力
+- 店舗別の名称、ロゴ、カテゴリ、保管場所、単位設定
+- 管理者／スタッフ権限
+- 会社・店舗ごとのデータ分離
 
-1. Supabaseで新しいProjectを作成
-2. SQL Editorで `supabase-schema.sql` を実行
-3. SQL Editorで `supabase-seed.sql` を実行
-4. Authenticationでスタッフ用ユーザーを作成
-5. Project Settings > API から `Project URL` と `anon public key` を確認
-6. `supabase-config.js` の値を差し替え
+## 初回移行（THE PORT）
 
-```js
-window.INVENTORY_SUPABASE = {
-  url: "https://xxxx.supabase.co",
-  anonKey: "public anon key"
-};
-```
+1. 現在のSupabaseを開く
+2. SQL Editorで `supabase-multistore-migration.sql` の全内容を実行
+3. GitHubへこのフォルダの公開ファイルを上書き
+4. アプリへログイン
+5. 右上の「店舗設定」で名称・カテゴリ・保管場所・単位を確認
 
-## 初期データ投入
+既存の在庫、原価、履歴、発注設定は削除されず、「THE PORT 店舗」へ引き継がれます。
+`okuda@anothertable.co.jp` は管理者、それ以外の既存ユーザーはスタッフとして移行されます。
 
-初期商品291件は `supabase-seed.sql` で投入できます。
-CSVで入れる場合は、画面を開いてログイン後、CSV取込で商品データを入れられます。
-CSV用の商品初期データは `seed-items.csv` にあります。
+## 新しい会社へ導入する
 
-1. GitHub PagesのURLを開く
-2. Supabase Authで作成したスタッフアカウントでログイン
-3. 右上の取込ボタンから `seed-items.csv` を選ぶ
-4. 291件の商品がSupabaseへ保存される
+1. Supabase Authenticationで、その会社の管理者ユーザーを作成
+2. `supabase-new-customer-template.sql` を開く
+3. 管理者メール、会社名、店舗名を書き換える
+4. SQL Editorで実行
+5. 共通のGitHub Pages URLとログイン情報を管理者へ案内
+6. 管理者がアプリの「店舗設定」でカテゴリ、保管場所、単位を設定
+7. CSV取込または画面入力で商品を登録
 
-## 原価計算をクラウド保存する
+別会社のユーザーは、他社・他店舗のデータを閲覧できません。
 
-原価計算タブのメニュー原価をスタッフ全員で共有するには、Supabaseに `menu_costings` テーブルを追加します。
-メニュー原価は `FOOD`、`DESERT`、`DRINK` の3カテゴリで管理できます。
-商品カードの上下ボタンで並べ替えた表示順も、`supabase-menu-costings.sql` を再実行するとクラウド保存できます。
+## スタッフを追加する
 
-すでに在庫アプリを運用中の場合:
+1. Supabase Authenticationでスタッフユーザーを作成
+2. `supabase-add-store-user-template.sql` のメールと店舗名を書き換える
+3. SQL Editorで実行
 
-1. Supabaseを開く
-2. 左メニューの SQL Editor を開く
-3. `supabase-menu-costings.sql` の中身を貼り付ける
-4. Run を押す
-5. Excelから抽出した初期原価データを入れる場合は、続けて `supabase-menu-costings-seed.sql` の中身を貼り付けて Run を押す
-6. GitHub Pages側へ `index.html`、`styles.css`、`app.js` を反映する
-7. アプリを開き直してログインする
+権限は次の2種類です。
 
-これで原価計算タブで保存したメニュー原価がSupabaseに保存され、別端末でログインしても同じデータを見られます。
+- `admin`: 店舗設定、業者設定、商品の削除、原価の削除が可能
+- `staff`: 日常の在庫入力、冷蔵庫チェック、発注、原価入力が可能
 
-## GitHub Pages公開
+## 複数店舗を担当するユーザー
 
-このフォルダ内のファイルをGitHubリポジトリへ置き、GitHub Pagesを有効化します。
+同じユーザーを複数の `store_members` に登録すると、ログイン後のヘッダーに店舗選択欄が表示されます。切り替え後は在庫・原価・発注がその店舗の内容に入れ替わります。
 
-必要ファイル:
+## QRコード
+
+管理者でログインし、「店舗設定」から「QR印刷」を押します。店舗設定に登録した保管場所だけがA4印刷画面へ表示され、QRには店舗IDも含まれます。
+
+## 公開ファイル
+
+GitHub Pagesへアップロードする主なファイルは次のとおりです。
 
 - `index.html`
 - `styles.css`
 - `app.js`
+- `qr-codes.html`
 - `supabase-config.js`
-- `supabase-schema.sql`
-- `supabase-menu-costings.sql`
-- `supabase-menu-costings-seed.sql`
-- `supabase-seed.sql`
 - `seed-items.json`
-- `seed-items.csv`
 
-GitHubでの流れ:
+SQLファイルと説明書は画面表示には不要ですが、保守用としてGitHubへ置いて構いません。
 
-1. 新しいリポジトリを作成
-2. このフォルダ内のファイルをアップロード
-3. Settings > Pages を開く
-4. Branch を `main`、Folder を `/root` にして保存
-5. 表示されたGitHub Pages URLをスタッフに共有
+## 運用上の注意
 
-## iPhone/iPadでの利用
-
-スタッフはSafariでGitHub PagesのURLを開きます。
-共有ボタンから「ホーム画面に追加」をすると、アプリのように起動できます。
-
-ログイン後は15秒ごとに最新データを取得します。
-すぐ反映したい場合は右上の更新ボタンを押してください。
-
-## 注意
-
-GitHub Pagesだけでは在庫データを保存できません。
-必ずSupabaseのURLとanon keyを `supabase-config.js` に設定してください。
+- GitHub Pagesは画面公開、Supabaseはログインとデータ保存に使用します。
+- `supabase-config.js` には公開可能なSupabase URLとpublishable keyだけを設定します。secret keyは絶対に置かないでください。
+- 新しい会社を追加する際は、必ず会社・店舗・所属ユーザーを作成してからURLを案内します。
+- 販売を本格化する場合は、独自ドメイン、利用規約、プライバシーポリシー、障害時の連絡窓口、定期バックアップを準備してください。
